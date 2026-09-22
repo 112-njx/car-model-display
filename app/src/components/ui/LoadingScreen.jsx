@@ -1,22 +1,24 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useProgress } from "@react-three/drei";
+import { useCarStore } from "../../state/useCarStore";
 import { STRINGS } from "./strings";
 
-// T4 · 中文加载页（纯展示组件 + 自身生命周期，由 props 驱动）
+// T4 · 中文加载页（store 连接版，B 段）
 //
-// props:
-//   progress    number  0..100 目标进度（原始值，组件内部做平滑推进）
-//   loadedBytes number  已下载字节（字节级读数，>0 且 totalBytes>0 时显示 MB）
-//   totalBytes  number  总字节
-//   sceneReady  boolean 首帧场景是否就绪；为 true 时进度补到 100 并进入退场
-//   hasError    boolean 资源加载失败，显示中断状态与重试按钮
-//   onRetry     function 重试回调（缺省时按钮不存在）
-//   bypass      boolean 命中缓存时直接不渲染
+// 挂载：`<LoadingScreen onRetry={() => window.location.reload()} />`
 //
-// 说明：
-//   1. 字节级读数（MB）在 T1 基线中由 useVehicleGLTF 的传输回调写入 store，
-//      §13.2 的新 store 未包含该字段（已在 docs/contracts/CHANGELOG.md 登记）。
-//      T8 接线时：能拿到字节就传，拿不到就传 0 —— 组件自动回退为中文提示，不显示 0 / 0 MB。
-//   2. 组件不读任何 store，接线阶段由 T8 注入真实数据。
+// 数据来源（两路，字节优先）：
+//   1. `store.loading`（§13.2 增补片，见 docs/contracts/CHANGELOG.md 0010，由 T5 的
+//      VehicleModel 把 useVehicleGLTF 的传输回调接进来）—— 提供真正的**字节级进度**；
+//   2. drei `useProgress()` —— 提供加载条目数与百分比，并作为 0010 落地前的兜底。
+//   该片尚未落地时 `store.loading` 为 undefined，组件自动走兜底路径，不报错。
+//
+// props（全部可选，仅供自测/隔离覆盖）：
+//   progress / loadedBytes / totalBytes / sceneReady / hasError / onRetry / bypass
+//
+// 说明：FormDrive 原有的 localStorage 跳过逻辑（`formdrive:studio-ready:v1`）已移除——
+//      该键名是英文品牌残留，且与新加载页"每次进入都展示中控启动"的定位冲突。
+//      需要跳过时由宿主传 `bypass`。
 
 const MIN_DISPLAY_MS = 900;
 const EXIT_DURATION_MS = 720;
@@ -24,16 +26,26 @@ const PROGRESS_TRAVEL_MS = 1800;
 const BYTES_PER_MB = 1_048_576;
 
 export function LoadingScreen({
-  progress = 0,
-  loadedBytes = 0,
-  totalBytes = 0,
-  sceneReady = false,
-  hasError = false,
+  progress: progressProp,
+  loadedBytes: loadedBytesProp,
+  totalBytes: totalBytesProp,
+  sceneReady: sceneReadyProp,
+  hasError: hasErrorProp,
   onRetry,
   bypass = false,
   minDisplayMs = MIN_DISPLAY_MS,
   exitDurationMs = EXIT_DURATION_MS,
 }) {
+  const { active, progress: dreiProgress, errors } = useProgress();
+  const loading = useCarStore((state) => state.loading);
+
+  const rawProgress = progressProp ?? loading?.progress ?? dreiProgress ?? 0;
+  const loadedBytes = loadedBytesProp ?? loading?.loadedBytes ?? 0;
+  const totalBytes = totalBytesProp ?? loading?.totalBytes ?? 0;
+  // 就绪判据：优先取 store 的显式信号；否则用 drei 的「无进行中加载且已到 100%」
+  const sceneReady = sceneReadyProp ?? loading?.sceneReady ?? (!active && dreiProgress >= 100);
+  const hasError = hasErrorProp ?? errors.length > 0;
+
   const startedAt = useRef(performance.now());
   const targetRef = useRef(0);
   const displayedRef = useRef(0);
@@ -42,7 +54,7 @@ export function LoadingScreen({
   const [isComplete, setIsComplete] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
 
-  targetRef.current = sceneReady ? 100 : Math.min(96, Math.max(0, progress));
+  targetRef.current = sceneReady ? 100 : Math.min(96, Math.max(0, rawProgress));
   readyRef.current = sceneReady;
 
   // 进度平滑推进：每帧向目标值靠拢，避免加载回调的跳变
@@ -93,9 +105,9 @@ export function LoadingScreen({
     ? STRINGS.loading.statusError
     : canEnter
       ? STRINGS.loading.statusReady
-      : sceneReady || progress >= 100
+      : sceneReady || rawProgress >= 100
         ? STRINGS.loading.statusCalibrating
-        : progress > 0
+        : rawProgress > 0
           ? STRINGS.loading.statusLoading
           : STRINGS.loading.statusPreparing;
 

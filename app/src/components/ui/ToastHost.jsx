@@ -1,14 +1,18 @@
 import React, { useEffect } from "react";
+import { useCarStore } from "../../state/useCarStore";
 import { STRINGS } from "./strings";
 
-// T4 · Toast 执行反馈宿主（纯展示组件，由 props 驱动）
+// T4 · Toast 执行反馈宿主（store 连接版，B 段）
 //
-// props:
-//   toasts    ToastItem[]  形如 { id, text, level, ts }，level: 'info'|'success'|'warn'
-//   onDismiss (id) => void 关闭单条（点击或超时自动触发）
+// 挂载：`<ToastHost />`（无必需 props）。组件订阅 §13.2 的 `store.toast`，
+//       把 T4（按钮）/ T5（点击拾取）/ T6（语音）三条通道推进来的中文反馈统一渲染。
+//
+// props（全部可选，仅用于自测/隔离）：
+//   toasts    ToastItem[]  覆盖 store.toast
+//   onDismiss (id) => void 覆盖 store.dismissToast
 //   duration  number       自动消失时长（毫秒）
 //
-// 接线阶段：T8 把 store.toast 与 store.dismissToast 注入即可。
+// ToastItem 形状（§13.2）：{ id, text, level, ts }，level: 'info' | 'success' | 'warn'
 
 const AUTO_DISMISS_MS = 2600;
 
@@ -36,7 +40,13 @@ function Toast({ item, onDismiss, duration }) {
   );
 }
 
-export function ToastHost({ toasts = [], onDismiss, duration = AUTO_DISMISS_MS }) {
+export function ToastHost({ toasts: toastsProp, onDismiss: onDismissProp, duration = AUTO_DISMISS_MS }) {
+  const storeToasts = useCarStore((state) => state.toast);
+  const storeDismiss = useCarStore((state) => state.dismissToast);
+
+  const toasts = toastsProp ?? storeToasts;
+  const onDismiss = onDismissProp ?? storeDismiss;
+
   return (
     <ul className="cd-ui-toast-host" role="status" aria-live="polite">
       {toasts.map((item) => (
