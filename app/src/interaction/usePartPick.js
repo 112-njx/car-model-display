@@ -36,9 +36,11 @@ export function usePartPick({
   hitAreas,
   interaction,
   onPick,
+  onPointerActivity,
   enabled = true,
   tooltip = true,
   cursor = true,
+  highlight = true,
 } = {}) {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
@@ -55,6 +57,8 @@ export function usePartPick({
   const [hoveredId, setHoveredId] = useState(null);
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+  const onPointerActivityRef = useRef(onPointerActivity);
+  onPointerActivityRef.current = onPointerActivity;
 
   const releaseHighlight = useCallback(() => {
     highlightRestore.current.forEach((snapshot, material) => {
@@ -105,7 +109,7 @@ export function usePartPick({
   const showHover = useCallback((descriptor, clientX, clientY) => {
     if (hoveredRef.current !== descriptor.id) {
       releaseHighlight();
-      applyHighlight(descriptor);
+      if (highlight) applyHighlight(descriptor);
       hoveredRef.current = descriptor.id;
       setHoveredId(descriptor.id);
     }
@@ -117,7 +121,7 @@ export function usePartPick({
       el.style.top = `${clientY + TOOLTIP_OFFSET[1]}px`;
     }
     if (cursor) gl.domElement.style.cursor = "pointer";
-  }, [applyHighlight, cursor, gl, releaseHighlight, tooltip]);
+  }, [applyHighlight, cursor, gl, highlight, releaseHighlight, tooltip]);
 
   // 中文部件名 tooltip：独立 DOM 节点 + 内联样式，不依赖任何全局 css 文件
   useEffect(() => {
@@ -171,6 +175,8 @@ export function usePartPick({
       cameraAnchor.current.position.copy(camera.position);
       if (controls?.target) cameraAnchor.current.target.copy(controls.target);
       cameraMoved.current = false;
+      // §13.2：所有用户输入（含指针）都必须 bumpInteraction()，是 T7 待机自转的复位信号
+      onPointerActivityRef.current?.();
       gesture.current = {
         pointerId: event.pointerId,
         x: event.clientX,

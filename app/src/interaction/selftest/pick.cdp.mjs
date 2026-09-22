@@ -8,7 +8,7 @@
  *
  * 覆盖：10 个部件 + 2 个灯光的真实鼠标点击开合、拖拽不误触发、触摸点按、
  *       hitTargets 屏幕坐标可用性、玻璃部件命中覆盖率（点中率）。
- * 注意：A 段用 __carDisplayPickState 读占位状态；B 段接 store 后应改读 __carDisplayStore。
+ * 终态一律读 §13.3 的 __carDisplaySceneAudit()（不依赖 T5 私有的调试钩子）。
  */
 const baseUrl = process.argv[2] ?? "http://127.0.0.1:5175/";
 const debugPort = Number(process.argv[3] ?? 12319);
@@ -98,19 +98,30 @@ await send("Emulation.setDeviceMetricsOverride", {
 await send("Page.navigate", { url: baseUrl });
 await delay(7000);
 
+/** 从 §13.3 的 __carDisplaySceneAudit() 读出 10 部件 + 2 灯光的终态 */
+const readState = async () => evaluate(`(() => {
+  const audit = window.__carDisplaySceneAudit();
+  return {
+    open: Object.fromEntries(audit.parts.map((part) => [part.id, part.open])),
+    lights: Object.fromEntries(audit.lights.map((light) => [light.id, light.on])),
+  };
+})()`);
+
 const ready = await evaluate(`(() => ({
-  hasAudit: typeof window.__carDisplayHitTargets === 'function',
-  targets: typeof window.__carDisplayHitTargets === 'function' ? window.__carDisplayHitTargets().length : 0,
+  hasAudit: typeof window.__carDisplaySceneAudit === 'function',
+  hasStore: typeof window.__carDisplayStore?.getState === 'function',
+  targets: typeof window.__carDisplaySceneAudit === 'function' ? window.__carDisplaySceneAudit().hitTargets.length : 0,
   canvas: (() => { const c = document.querySelector('canvas'); if (!c) return null; const r = c.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), left: Math.round(r.left), top: Math.round(r.top) }; })(),
 }))()`);
 console.log("── 环境 ──");
-console.log(`       canvas=${JSON.stringify(ready.canvas)} hitTargets=${ready.targets}`);
+console.log(`       canvas=${JSON.stringify(ready.canvas)} hitTargets=${ready.targets} store=${ready.hasStore}`);
+check("§13.3① __carDisplayStore 可用", ready.hasStore, true);
 if (!ready.hasAudit || !ready.targets) {
-  console.log("✗ 页面未就绪（hitTargets 不可用），中止");
+  console.log("✗ 页面未就绪（__carDisplaySceneAudit().hitTargets 不可用），中止");
   process.exit(1);
 }
 
-const targets = await evaluate("window.__carDisplayHitTargets()");
+const targets = await evaluate("window.__carDisplaySceneAudit().hitTargets");
 console.log("── hitTargets ──");
 targets.forEach((t) => console.log(`       ${t.id.padEnd(10)} screen=(${t.screen.x.toFixed(0)},${t.screen.y.toFixed(0)}) size=[${t.size.map((v) => v.toFixed(2)).join(",")}]`));
 check("hitTargets 覆盖 10 部件 + 2 灯光", targets.length, 12);
@@ -127,20 +138,20 @@ for (const id of [...PART_IDS, ...LIGHT_IDS]) {
   const point = screenOf[id];
   if (!point) { check(`${id} 有命中目标`, false, true); continue; }
   await mouseClick(point.x, point.y);
-  const afterFirst = await evaluate("window.__carDisplayPickState()");
+  const afterFirst = await readState();
   const bucket = LIGHT_IDS.includes(id) ? afterFirst.lights : afterFirst.open;
   check(`点击 ${id} → 打开`, Boolean(bucket[id]), true);
   await mouseClick(point.x, point.y);
-  const afterSecond = await evaluate("window.__carDisplayPickState()");
+  const afterSecond = await readState();
   const bucket2 = LIGHT_IDS.includes(id) ? afterSecond.lights : afterSecond.open;
   check(`再点 ${id} → 关闭`, Boolean(bucket2[id]), false);
 }
 
 console.log("── 拖拽旋转不误触发点击 ──");
 const doorPoint = screenOf.door_lf;
-const before = await evaluate("window.__carDisplayPickState()");
+const before = await readState();
 await mouseDrag(doorPoint.x, doorPoint.y, 90, 30);
-const afterDrag = await evaluate("window.__carDisplayPickState()");
+const afterDrag = await readState();
 check("拖拽 90px 后 door_lf 状态不变", afterDrag.open.door_lf ?? false, before.open.door_lf ?? false);
 check("拖拽后相机确实转动了", await evaluate("(() => { const c = window.__formdriveCameraObject; return Boolean(c); })()"), true);
 
@@ -148,22 +159,22 @@ console.log("── 触摸点按（手机路径）──");
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
 await delay(900);
-const mobileTargets = await evaluate("window.__carDisplayHitTargets()");
+const mobileTargets = await evaluate("window.__carDisplaySceneAudit().hitTargets");
 const mobileScreen = Object.fromEntries(mobileTargets.map((t) => [t.id, t.screen]));
 check("手机视口下仍有 12 个命中目标", mobileTargets.length, 12);
 for (const id of ["window_lf", "door_lf", "trunk"]) {
   const point = mobileScreen[id];
   await touchTap(point.x, point.y);
-  const state = await evaluate("window.__carDisplayPickState()");
+  const state = await readState();
   check(`触摸点按 ${id} → 打开`, Boolean(state.open[id]), true);
   await touchTap(point.x, point.y);
-  const state2 = await evaluate("window.__carDisplayPickState()");
+  const state2 = await readState();
   check(`再触摸 ${id} → 关闭`, Boolean(state2.open[id]), false);
 }
 
 console.log("── 玻璃部件命中覆盖率（点中率）──");
 const coverage = await evaluate(`(() => {
-  const targets = window.__carDisplayHitTargets();
+  const targets = window.__carDisplaySceneAudit().hitTargets;
   const out = {};
   for (const id of ['window_lf','window_rf','window_lr','window_rr']) {
     const t = targets.find((item) => item.id === id);

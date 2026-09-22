@@ -202,8 +202,8 @@ export function partWorldBox(descriptor, hitAreas) {
   if (descriptor.pivot) {
     box.union(_box.setFromObject(descriptor.pivot));
   } else {
-    // 灯光没有 pivot，直接并集自己的 mesh（大灯/尾灯）
-    descriptor.meshes.forEach((mesh) => box.union(_box.setFromObject(mesh)));
+    // 灯光（或 pivot 解析失败的部件）没有 pivot，直接并集自己的 mesh
+    (descriptor.meshes ?? []).forEach((mesh) => box.union(_box.setFromObject(mesh)));
   }
   hitAreas.proxies
     .filter((proxy) => proxy.id === descriptor.id)
