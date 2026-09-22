@@ -1,7 +1,8 @@
 import { create } from "zustand";
 
 export const useStudioStore = create((set, get) => ({
-  vehicle: "mustang",
+  // T1: 单车型固化，默认车型固定为 tesla（T2 契约重构时随 store 一并处理）
+  vehicle: "tesla",
   pendingVehicle: null,
   vehicleLoadError: null,
   paint: "ivory",

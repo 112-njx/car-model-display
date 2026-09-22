@@ -8,21 +8,8 @@ export const PAINTS = {
   blue: { label: "Midnight blue", color: "#102b54", metalness: 0.76 },
 };
 
+// T1: 单车型固化 —— 仅保留 Tesla Model 3 2018（mustang / concept 资产已移除）
 export const VEHICLES = {
-  mustang: {
-    eyebrow: "FORD MUSTANG GT", year: "2005", label: "Mustang GT", note: "American muscle", thumbnail: assetUrl("models/mustang-preview.jpg"),
-    url: assetUrl("models/mustang-2005.glb"), rotation: [0, -0.08, 0], groundOffset: -0.015,
-    parts: {
-      leftDoor: { label: "Left door", prefix: "leftdoor_", ascend: 1, axis: "y", angle: -1.02 },
-      rightDoor: { label: "Right door", prefix: "rightdoor_", ascend: 1, axis: "y", angle: 1.02 },
-      leftWindow: { label: "Left window", exact: "leftdoor_Glass_Clear_0", companions: [{ exact: "leftdoor_Material_#217_0" }], motion: "slide", travel: 0.34 },
-      rightWindow: { label: "Right window", exact: "rightdoor_Material_#300_0", motion: "slide", travel: 0.34 },
-      hood: { label: "Hood", prefix: "hood_", ascend: 1, axis: "z", angle: -0.9 },
-      trunk: { label: "Trunk", prefix: "trunk_", ascend: 1, axis: "z", angle: 0.82 },
-    },
-    attachments: { trunk: [{ prefix: "rearbadge_" }] },
-    paintNames: ["carpaint"], rimNames: ["frdperofrmcrim", "aluminium_clean2", "aluminium_clean3"], lightNames: ["headlight"], tailLightNames: ["tailight_reddrk", "tailight_redglass"],
-  },
   tesla: {
     eyebrow: "TESLA MODEL 3", year: "2018", label: "Model 3", note: "Electric sedan", thumbnail: assetUrl("models/tesla-preview.jpg"),
     url: assetUrl("models/tesla-model-3-2018.glb"), rotation: [0, Math.PI, 0], groundOffset: -0.025,
@@ -39,19 +26,6 @@ export const VEHICLES = {
       trunk: { label: "Rear trunk", exact: "boot_dummy", axis: "x", angle: -0.82 },
     },
     paintNames: ["primary", "paint_black", "putih_putih0_0", "putih002_putih0_0"], rimNames: ["wheels"], lightNames: ["right_front_light", "left_front_light", "foglight_r", "foglight_l"], tailLightNames: ["right_rear_light", "left_rear_light", "breaklight_l"],
-  },
-  concept: {
-    eyebrow: "K15 CONCEPT COUPÉ", year: "2021", label: "K15 Concept", note: "Technical coupé", thumbnail: assetUrl("models/concept-preview.jpg"),
-    url: assetUrl("models/car-concept.glb"), rotation: [0, 0.08, 0], groundOffset: -0.16,
-    parts: {
-      leftDoor: { label: "Left door", exact: "BodyDoorLColor1", axis: "z", angle: -1.0 },
-      rightDoor: { label: "Right door", exact: "BodyDoorRColor1", axis: "z", angle: 1.0 },
-      leftWindow: { label: "Left window", exact: "BodyDoorLWindow", motion: "slide", travel: 0.3 },
-      rightWindow: { label: "Right window", exact: "BodyDoorRWindow", motion: "slide", travel: 0.3 },
-      hood: { label: "Hood", exact: "BodyHood", axis: "x", angle: 0.82 },
-      trunk: { label: "Rear hatch", exact: "BodyRearPanelsColor1", axis: "x", angle: -0.72 },
-    },
-    paintNames: ["paint 1", "paint 2", "color1", "color2"], rimNames: ["rim"], lightNames: ["headlight"], tailLightNames: ["brakelight"],
   },
 };
 
@@ -75,7 +49,5 @@ export const WHEELS = {
 };
 
 export const HEADLIGHT_RIGS = {
-  mustang: { left: [-0.84, 0.67, 2.48], right: [1, 0.67, 2.48], leftTarget: [-1.04, -0.08, 10], rightTarget: [1.2, -0.08, 10], intensity: 96 },
   tesla: { left: [-0.72, 0.72, 2.55], right: [0.72, 0.72, 2.55], leftTarget: [-0.96, -0.06, 10], rightTarget: [0.96, -0.06, 10], intensity: 90 },
-  concept: { left: [-0.86, 0.61, 2.5], right: [0.86, 0.61, 2.5], leftTarget: [-1.08, -0.08, 10], rightTarget: [1.08, -0.08, 10], intensity: 100 },
 };
