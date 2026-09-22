@@ -10,6 +10,7 @@
 
 import { TIERS, classifyTier, detectEnv, lowerTier, nextTierDown } from "./deviceTier.js";
 import { DEFAULT_THRESHOLDS, createFpsSampler } from "./fpsSampler.js";
+import { FORCE_KEY, probeGraphicsSupport, probeWebGL, resetProbeCache } from "./graphicsSupport.js";
 
 let passed = 0;
 const failures = [];
@@ -307,6 +308,140 @@ life.sampler.stop();
 check("stop 后 isRunning 为 false", life.sampler.isRunning() === false);
 life.run(500);
 check("stop 后不再产帧（无 pending 回调）", life.sampler.getDiagnostics().running === false);
+
+console.log("\n[10] graphicsSupport —— 降级页的判定依据");
+
+/**
+ * 用假的 document / window / navigator.gpu 驱动探测分支。
+ * 真实浏览器里的降级页渲染由 CDP 自测覆盖；这里覆盖的是**判定逻辑**本身。
+ */
+function withFakeEnv({ getContext, gpu, hasNavigatorGpu = false }, fn) {
+  const hadDocument = "document" in globalThis;
+  const savedDocument = globalThis.document;
+  const savedWindow = globalThis.window;
+  const hadGpu = "gpu" in (globalThis.navigator ?? {});
+  const savedGpu = globalThis.navigator?.gpu;
+  let lostContextCalls = 0;
+
+  globalThis.document = {
+    createElement: () => ({
+      getContext: (type) => {
+        const result = getContext(type);
+        if (result && typeof result === "object") {
+          result.getExtension = (name) => {
+            if (name === "WEBGL_lose_context") return { loseContext: () => { lostContextCalls += 1; } };
+            return null;
+          };
+        }
+        return result;
+      },
+    }),
+  };
+  globalThis.window = {};
+  if (globalThis.navigator) {
+    if (hasNavigatorGpu) {
+      Object.defineProperty(globalThis.navigator, "gpu", { value: gpu, configurable: true });
+    } else {
+      delete globalThis.navigator.gpu;
+    }
+  }
+  resetProbeCache();
+
+  const restore = () => {
+    if (hadDocument) globalThis.document = savedDocument;
+    else delete globalThis.document;
+    if (savedWindow === undefined) delete globalThis.window;
+    else globalThis.window = savedWindow;
+    if (globalThis.navigator) {
+      if (hadGpu) Object.defineProperty(globalThis.navigator, "gpu", { value: savedGpu, configurable: true });
+      else delete globalThis.navigator.gpu;
+    }
+    resetProbeCache();
+  };
+
+  return Promise.resolve(fn()).finally(restore).then(() => lostContextCalls);
+}
+
+// webgl2 可用 → 直接判可渲染，且探测后归还了上下文名额
+let lost = 0;
+await withFakeEnv({ getContext: (type) => (type === "webgl2" ? {} : null) }, async () => {
+  const result = probeWebGL();
+  check("webgl2 可用 → ok", result.ok === true, JSON.stringify(result));
+  equal("api 标为 webgl2", result.api, "webgl2");
+}).then((calls) => {
+  lost = calls;
+});
+equal("探测后调用了 WEBGL_lose_context 归还名额", lost, 1);
+
+// 只有 webgl1
+await withFakeEnv({ getContext: (type) => (type === "webgl" ? {} : null) }, async () => {
+  const result = probeWebGL();
+  check("仅 webgl1 可用 → ok", result.ok === true, JSON.stringify(result));
+  equal("api 标为 webgl", result.api, "webgl");
+});
+
+// 无任何 WebGL，但有可用 WebGPU 适配器 → 仍判可渲染（StudioCanvas 优先走 WebGPU）
+await withFakeEnv(
+  {
+    getContext: () => null,
+    hasNavigatorGpu: true,
+    gpu: { requestAdapter: async () => ({ name: "fake-adapter" }) },
+  },
+  async () => {
+    const result = await probeGraphicsSupport();
+    check("无 WebGL 但有 WebGPU 适配器 → ok（不弹降级页）", result.ok === true, JSON.stringify(result));
+    equal("api 标为 webgpu", result.api, "webgpu");
+  },
+);
+
+// navigator.gpu 存在但拿不到适配器 → 降级
+await withFakeEnv(
+  { getContext: () => null, hasNavigatorGpu: true, gpu: { requestAdapter: async () => null } },
+  async () => {
+    const result = await probeGraphicsSupport();
+    check("WebGPU 拿不到适配器 → 降级", result.ok === false, JSON.stringify(result));
+    check("reason 里保留了 webgpu 子原因", result.reason.includes("webgpu:no-adapter"), result.reason);
+  },
+);
+
+// 两者都没有 → 降级，且 reason 同时记录两条子原因
+await withFakeEnv({ getContext: () => null }, async () => {
+  const result = await probeGraphicsSupport();
+  check("WebGL 与 WebGPU 都不可用 → 降级", result.ok === false, JSON.stringify(result));
+  check("reason 含 webgl:no-context", result.reason.includes("webgl:no-context"), result.reason);
+  check("reason 含 webgpu:no-navigator-gpu", result.reason.includes("webgpu:no-navigator-gpu"), result.reason);
+});
+
+// getContext 抛异常不应把整个应用带崩
+await withFakeEnv(
+  {
+    getContext: () => {
+      throw new Error("驱动炸了");
+    },
+  },
+  async () => {
+    const result = await probeGraphicsSupport();
+    check("getContext 抛异常 → 降级而非崩溃", result.ok === false, JSON.stringify(result));
+    check("reason 含 throw:", result.reason.includes("throw:"), result.reason);
+  },
+);
+
+// 自测强制钩子：强制走降级页
+await withFakeEnv({ getContext: (type) => (type === "webgl2" ? {} : null) }, async () => {
+  globalThis.window[FORCE_KEY] = { webgl: false, webgpu: false };
+  resetProbeCache();
+  const result = await probeGraphicsSupport();
+  check("强制钩子 webgl:false → 降级（即使环境其实支持）", result.ok === false, JSON.stringify(result));
+  check("强制降级的 reason 标为 forced", result.reason.includes("forced"), result.reason);
+});
+
+// 自测强制钩子：强制可用
+await withFakeEnv({ getContext: () => null }, async () => {
+  globalThis.window[FORCE_KEY] = { webgl: true };
+  resetProbeCache();
+  const result = await probeGraphicsSupport();
+  check("强制钩子 webgl:true → 判可渲染（即使环境其实不支持）", result.ok === true, JSON.stringify(result));
+});
 
 console.log(`\n${"─".repeat(56)}`);
 if (failures.length === 0) {

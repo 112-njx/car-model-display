@@ -194,7 +194,8 @@
   - `npm run build`（未挂载时）：✅ 628 modules，14.92s。
   - `npm run build`（临时挂载后）：✅ **635 modules**，6.00s——模块数 +7 证明 `perf/**` 确实进入了构建管线并编译通过（未挂载时这 7 个模块被 tree-shake 掉，**那次 build 并未验证到新代码**，特此说明）。
   - `npm run preview -- --port 4173`：✅ HTTP 200。
-  - **浏览器内验证（降级页渲染、`__carDisplaySceneAudit().perf` 读数、CPU 降频触发自动降档）：未完成**，被 worktree 隔离守卫拦下，见人工配置区 #5。**本条不计入已完成。**
+  - `node app/src/perf/selfTest.mjs` 扩充第 [10] 段，用假 `document` / `window` / `navigator.gpu` 覆盖 `graphicsSupport` 的**全部判定分支**：webgl2 / 仅 webgl1 / 无 WebGL 但有 WebGPU 适配器（**必须判可渲染，不弹降级页**）/ `navigator.gpu` 存在但拿不到适配器 / 两者皆无 / `getContext` 抛异常 / 强制钩子开与关 / 探测后确实调用 `WEBGL_lose_context` 归还上下文名额。**全套 66 项断言全绿 ✅**。
+  - **仍未完成的浏览器内验证**（被 worktree 隔离守卫拦下，见人工配置区 #5，**不计入已完成**）：① 降级页在真浏览器里的实际渲染；② `__carDisplaySceneAudit().perf` 的真实读数；③ CPU 降频下 rAF 驱动出的自动降档。前两项只验到了"判定逻辑"与"编译通过"，第三项只验到了假时钟下的采样器行为。
 - **commit**：`db8ab86`（已 push 到 `origin/wave1/t8p`）
 - **遗留项**：① 浏览器端三项验证待放行后补做；② `docs/debug.md` 被全部 9 个 Wave 1 Agent 追加，**T8 合并时此处必冲突**，建议以"两侧都保留、按 Agent 分段"处理。
 
