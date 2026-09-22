@@ -1,8 +1,17 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { CanvasTexture, ClampToEdgeWrapping, Color, LinearFilter, MathUtils } from "three";
-import { HEADLIGHT_RIGS } from "../../config/studioConfig";
-import { useStudioStore } from "../../state/useStudioStore";
+import { useCarStore } from "../../state/useCarStore";
+
+// T3 B 段：单车型契约化 —— 固定 Tesla 锚点（值取自 legacy studioConfig.HEADLIGHT_RIGS.tesla，
+// 与 T1 基线一致，零行为变化）。不再依赖 studioConfig / useStudioStore（后者 T8 集成末段删除）。
+const TESLA_RIG = {
+  left: [-0.72, 0.72, 2.55],
+  right: [0.72, 0.72, 2.55],
+  leftTarget: [-0.96, -0.06, 10],
+  rightTarget: [0.96, -0.06, 10],
+  intensity: 90,
+};
 
 const WARMUP_COLOR = new Color("#ffd29b");
 const RUNNING_COLOR = new Color("#fff3d2");
@@ -114,9 +123,10 @@ function ProjectedBeam({ vehicle, side, position, target, intensity, enabled, co
 
 export function HeadlightRig() {
   const group = useRef();
-  const vehicle = useStudioStore((state) => state.vehicle);
-  const enabled = useStudioStore((state) => state.headlights);
-  const rig = HEADLIGHT_RIGS[vehicle];
+  // T3 B 段：单车型固定 tesla；大灯开关读 useCarStore.lights.headlight（§13.2 lights 状态片）。
+  const vehicle = "tesla";
+  const enabled = useCarStore((state) => state.lights.headlight);
+  const rig = TESLA_RIG;
   const cookie = useMemo(createHeadlightCookie, []);
   useEffect(() => () => cookie.dispose(), [cookie]);
   useFrame(() => {
