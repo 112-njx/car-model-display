@@ -1,11 +1,25 @@
 import React from "react";
 import { StudioCanvas } from "./components/scene/StudioCanvas";
-import { Navigation } from "./components/ui/Navigation";
-import { HeroCopy } from "./components/ui/HeroCopy";
-import { ControlDeck } from "./components/ui/ControlDeck";
-import { CameraControls } from "./components/ui/CameraControls";
-import { InfoDialog } from "./components/ui/InfoDialog";
-import { InitialLoadingScreen } from "./components/ui/InitialLoadingScreen";
+import { ControlPanel } from "./components/ui/ControlPanel";
+import { ToastHost } from "./components/ui/ToastHost";
+import { LoadingScreen } from "./components/ui/LoadingScreen";
+import { STRINGS } from "./components/ui/strings";
 
-// T1: 临时摘除 <VehicleSelector />（单车型固化）。组件文件保留，统一组装归 T8。
-export default function App() { return <><a className="skip-link" href="#studio-controls">Skip to controls</a><main className="app-shell"><StudioCanvas /><div className="scene-vignette" /><Navigation /><HeroCopy /><ControlDeck /><CameraControls /><p className="gesture-hint">Drag — orbit · Scroll — zoom</p></main><InfoDialog /><InitialLoadingScreen /></>; }
+// T4（B 段）：移除 7 个配置器组件（ControlDeck / Navigation / HeroCopy / InfoDialog /
+// VehicleSelector / CameraControls / InitialLoadingScreen），改挂中文中控界面。
+// 经人工裁定采用「删组件 + 最小 App.jsx 改动」：除下列 import 与挂载点外，本文件其余结构
+// 与 T1 基线一致，App 的统一组装权仍在 T8（见 docs/t4-ui-mount-guide.md）。
+export default function App() {
+  return (
+    <>
+      <a className="skip-link" href="#studio-controls">{STRINGS.skipLink}</a>
+      <main className="app-shell">
+        <StudioCanvas />
+        <div className="scene-vignette" />
+        <ControlPanel />
+        <ToastHost />
+      </main>
+      <LoadingScreen onRetry={() => window.location.reload()} />
+    </>
+  );
+}
