@@ -142,6 +142,33 @@
   1. 真实浏览器的识别行为（Chrome/Edge 的 `onend` 时机、`continuous` 在安卓 Chrome 上的表现）只能真机确认，已登记人工配置区。
   2. `audio-capture` 目前按「可重试」处理（可能是设备被占用，重试有意义）；若真机表现为永久无设备，真机验收后再决定是否改为致命。
 
+### 记录 03 · 2026-09-22 10:50 · A 段（3/4）VoiceButton + 样式 + 语音播报 + 沙盒自测页
+
+- **轮次目标**：把「能看见、能点、能自测」的部分做完——纯 props 的 `VoiceButton`（录音波纹/实时字幕/状态文案/降级提示）、独立样式、可选 SpeechSynthesis 播报、以及一个**不依赖 store** 的自测沙盒页。
+- **改动文件**：`app/src/voice/VoiceButton.jsx`、`voice.css`、`synthesis.js`、`sandbox.jsx`、`voice.sandbox.html`（均新增）；`parseCommand.js`（新增 `parseAlternatives` 多候选择优）。
+- **关键决策**：
+  1. **VoiceButton 是纯展示组件**（props 驱动、不 import store），因此沙盒页能脱离 T2 契约独立自测；B 段只需把 `useVoiceControl` 的返回值摊给它。
+  2. **沙盒页靠 Vite dev server 直接服务**：`app/src/voice/voice.sandbox.html` → `http://localhost:<port>/src/voice/voice.sandbox.html`，**零 vite.config 改动**（§12.2 未给 T6 该文件的写权限）。实测 200 可访问。
+  3. **`parseAlternatives` 多候选择优**：ASR 给 3 条候选，逐条尝试解析，取第一条能出计划的——「打开车床」这类误识别能被第二条「打开车窗」救回。沙盒已实测该路径。
+  4. **样式可被 T4 token 覆盖**：颜色/圆角/间距集中在 `.cd-voice` 的自定义属性上，T8 集成期只需覆盖变量，不必改 `voice.css`。
+  5. **沙盒页自带假 store**：`executePlan` 的 api 用局部 React state 实现（action 名与 §13.2 一致），既验证了计划→动作的映射，又不需要真 store；B 段把这套 api 换成真 store 即可。
+- **关键问题（本轮自测发现并修复）**：
+  1. **`npm run dev` 起不来**：worktree 里没有 `node_modules`（被 .gitignore 忽略）。**修法**：在 worktree 内 `npm install --no-audit --no-fund`（20s/83 包），**lockfile 零改动**（已核对 `git status`）。注意：不要用目录联接共享主工作树的 `node_modules`——多个 Agent 并发跑 dev 会争抢 `node_modules/.vite` 依赖缓存。
+  2. **dev server 端口不是 5173**：5173/5174/5175 已被其他并行会话占用，Vite 自动退到 **5176**。第一次自测连的是 5173（别人的主工作树），拿到的是主应用页面（`/src/voice/*` 全部回退到 index.html），导致「页面无 `.cd-voice`」而挂死。**修法**：以 dev server 日志里的实际端口为准（见人工配置区说明）。
+  3. **CDP 自测挂死无输出**：命令写成 `node x.mjs 2>&1 | tail -70`，`tail` 会缓冲到进程结束，导致看不到任何进度、误判为「无输出」。**修法**：改为重定向到文件，并给脚本加 150s 看门狗强制退出。
+  4. **`Execution context was destroyed`**：连接 CDP 时页面尚在导航/HMR 重载，`Runtime.evaluate` 落在旧执行上下文。**修法**：evaluate 包装为重试（最多 8 次）。
+  5. **断言写错 2 处**（非产品缺陷）：`bumpInteraction` 期望值漏算「全部关闭」这一次；`.kv dd[6]` 取到的是别的卡片字段。已改为「与操作前计数比较」+「按卡片定位字段」。
+- **自测结果**：
+  - **headless Edge 153 + CDP 驱动沙盒页：35 项断言全部通过**（1 页面渲染与用例集 6 项、2 手动输入全链路 9 项、3 负例不误动作 5 项、4 mock 注入链路 6 项、5 降级路径 9 项、6 无 console error）。
+  - 覆盖到的真实链路：`「打开左前车窗」→ 仅左前车窗开（其余 3 窗不动）`、`「打开所有车窗」→ 4 窗全开`、`「打开大灯」→ 大灯亮`、`「看侧面」→ profile`、`「转一下」→ 环绕 +1`、`「全部关闭」→ 部件全关 + 灯光全灭`、`「打开」/「今天天气不错」→ 空计划 + 中文纠错提示`、`注入 mock 后 supported/injected 变 true 且回放驱动了状态`、`强制「不支持」/「非安全上下文」两条降级路径的按钮禁用与中文提示`。
+  - **`npm run build`：✅ 6.85s 通过**（T6 未改任何构建配置，产物与 T1 一致）。
+  - **额外验证**：用仓库外临时配置把 `voice.sandbox.html` 加入构建输入，**voice 模块单独打包成功**（`voiceSandbox.js` 42.01 kB + `voiceSandbox.css` 5.76 kB，5.58s）——证明 T6 代码真能编译打包，而非「因无人 import 而侥幸通过」；也证明 T8/T10a 只要在 `rollupOptions.input` 加一行即可把沙盒页打进 `dist`。临时配置在 `app/tmp/`（被 .gitignore 忽略，未进仓库）。
+- **commit**：`5ae3ef5`
+- **遗留项**：
+  1. 沙盒页**不在 `npm run build` 产物内**（需改 `vite.config.js`，T6 无权）。已在《挂载说明》给出给 T8/T10a 的一行配置。
+  2. 真机麦克风识别未测（headless 无麦克风、本机无 Chrome），登记人工配置区。
+  3. 沙盒页的假 store 与 B 段的真 store 是两套 api 实现（同名 action），B 段接线后需再跑一次同样的 35 项断言。
+
 ---
 
 ## 需要项目人工配置的地方
@@ -154,3 +181,6 @@
 | 2 | 手机真机同局域网联调 | 开发机 WLAN 地址 `10.14.6.9`（SSID `henu 3`，网络类别 Public）。Public 防火墙配置文件**已关闭**且已存在 2 条 `Node.js JavaScript Runtime` 入站放行规则，**无需额外放行端口**。手机需连同一 Wi-Fi 后访问 `http://10.14.6.9:5173/`。若校园网开启 AP 客户端隔离，手机将无法访问，此时请改用手机热点。**AI 无法代做真机验收**，请人工确认"仅 Tesla 一台车 / 无车型切换入口 / 四门四窗前后备箱灯光可用 / 触摸拖拽旋转可用"。 | 待处理（需真机） |
 | 3 | 加载页字节 MB 读数 | 见记录 04，等待人工决策是否修 `VehicleModel.jsx:81`。 | 待处理 |
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
+| 5 | **T6 真机麦克风授权 + §6 指令集识别验收** | 本机 headless 无麦克风、无 Chrome，AI **无法代做**。请在 **https 或 localhost** 的 **Chrome / Edge** 中打开沙盒页（或集成后的主页面），授权麦克风后逐条念 §6 指令集（打开/关闭车窗、打开左前门、关闭右后门、打开前/后备箱、打开/关闭大灯、转一下、看侧面、看正面、全部关闭），确认识别与执行正确。 | 待处理（需真机） |
+| 6 | **T6 沙盒页访问地址（端口不固定）** | 本机 5173/5174/5175 已被其他并行会话的 dev server 占用，T6 的 dev server 实际落在 **5176**：`http://localhost:5176/src/voice/voice.sandbox.html`。每次启动以 Vite 日志打印的端口为准（日志会写 `Port 5173 is in use, trying another one...`）。 | 待处理（每次启动需确认端口） |
+| 7 | **手机端语音测试需 https** | 局域网 `http://10.14.6.9:<port>` 属**非安全上下文**，Web Speech API 在手机上不可用（页面会显示中文降级提示，属预期行为）。手机真机语音验收须等 T10b 的 https 在线地址；开发期仅可用桌面 Chrome/Edge 的 localhost。 | 待处理（依赖 T10b） |
