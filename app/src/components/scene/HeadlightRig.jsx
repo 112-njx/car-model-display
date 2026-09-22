@@ -4,7 +4,7 @@ import { CanvasTexture, ClampToEdgeWrapping, Color, LinearFilter, MathUtils } fr
 import { useCarStore } from "../../state/useCarStore";
 
 // T3 B 段：单车型契约化 —— 固定 Tesla 锚点（值取自 legacy studioConfig.HEADLIGHT_RIGS.tesla，
-// 与 T1 基线一致，零行为变化）。不再依赖 studioConfig / useStudioStore（后者 T8 集成末段删除）。
+// 与 T1 基线一致，零行为变化）。不依赖 studioConfig / useStudioStore；两者已按 §12.4 第 5 步删除。
 const TESLA_RIG = {
   left: [-0.72, 0.72, 2.55],
   right: [0.72, 0.72, 2.55],

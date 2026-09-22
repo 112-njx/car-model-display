@@ -12,9 +12,9 @@
  *
  * 本文件是 roadmap §12.2 划给 T5 的独占文件（全 Wave 1 唯一修改方）。
  *
- * 过渡期说明（T8 集成期已收口）：车身外观改读契约常量 `carConfig.APPEARANCE`（CHANGELOG 0014）、
- * 首屏加载进度改读 `useCarStore.loading`（CHANGELOG 0013），本文件**不再引用 legacy `studioConfig.js`
- * 与兼容 shim `useStudioStore.js`**。
+ * T8 集成期收口：车身外观改读契约常量 `carConfig.APPEARANCE`（CHANGELOG 0016）、
+ * 首屏加载进度改读 `useCarStore.loading`（CHANGELOG 0015）。本文件已**不再引用** legacy
+ * `studioConfig.js` 与兼容 shim `useStudioStore.js`——两者均已按 §12.4 第 5 步删除。
  */
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";

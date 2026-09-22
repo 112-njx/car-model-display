@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useThree } from "@react-three/fiber";
 
 // 车模根节点的识别信号，按可靠性排序：
-//   信号 1 —— VehicleModel 在 DEV 下写入的 `globalThis.__formdriveModelScene`（模型内部 scene），
-//             其 parent 即 `<group ref>` 根节点。生产构建下该全局不存在。
+//   信号 1 —— `globalThis.__formdriveModelScene`（模型内部 scene），其 parent 即 `<group ref>` 根节点。
+//             **T8 集成期注记：T5 重写 VehicleModel 时删掉了这个 legacy 调试全局（见 T5《挂载说明》§4），
+//             因此本信号在集成后恒不命中；保留代码是为了不改动 T3 的模块，实际生效的是信号 2。**
 //   信号 2 —— 根 scene 的直接子树中 mesh 数量最多者。车模必然是 mesh 最多的那棵子树，
-//             阈值 4 用于排除地面/光带等场景件。
+//             阈值 4 用于排除地面/光带等场景件。**集成后倒影靠这一条生效，已实测确认。**
 // 两者都拿不到时返回 null —— 调用方必须优雅降级，绝不抛错。
 const MIN_VEHICLE_MESHES = 4;
 
