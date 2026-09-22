@@ -39,6 +39,7 @@ export function createSnapshot() {
     speechEnabled: false,
     lastCommand: "", // 最近一次成功执行的指令文本
     listening: false,
+    resultSeq: 0, // 每次处理完一条识别结果自增：接线层据此判断「有新回执要 toast」
   };
 }
 
@@ -120,14 +121,28 @@ export function createVoiceController(options = {}) {
     const transcript = detailed.text || (Array.isArray(alternatives) ? alternatives[0] : "") || "";
 
     if (!detailed.actions.length) {
-      emit({ transcript, reply: "", hint: detailed.hint || "", lastCommand: "" });
+      // `lastCommand` 的语义是「最近一条**成功执行**的指令」：未识别不执行，也就不该改写它
+      // （否则失败一次就把它清成 null，看起来像缺陷）。识别到的原文在 `transcript` 里。
+      emit({
+        transcript,
+        reply: "",
+        hint: detailed.hint || "",
+        resultSeq: snapshot.resultSeq + 1,
+      });
       log(`${source} 未执行（${detailed.reason}）：${detailed.hint}`);
       return { ok: false, detailed };
     }
 
     executePlan(detailed.actions, api);
     const reply = describeActions(detailed.actions, { vocabulary });
-    emit({ transcript, reply, hint: "", error: "", lastCommand: transcript });
+    emit({
+      transcript,
+      reply,
+      hint: "",
+      error: "",
+      lastCommand: transcript,
+      resultSeq: snapshot.resultSeq + 1,
+    });
     log(`${source} 执行：${reply}（${detailed.actions.length} 个动作）`);
     if (snapshot.speechEnabled && typeof speak === "function") speak(reply);
     return { ok: true, detailed, reply };
@@ -146,12 +161,21 @@ export function createVoiceController(options = {}) {
     return support;
   }
 
-  /** 注入/恢复识别实现（§13.3 ④ 的底层动作）。 */
+  /**
+   * 注入/恢复识别实现（§13.3 ④ 的底层动作）。
+   *
+   * 注意：**不能 `recognizer.destroy()`** —— 那会清空识别器的事件监听器，而本控制器还要继续用同一个
+   * 识别器实例（只是换掉它内部 new 出来的构造函数）。早期版本在这里 destroy 过，症状是：注入后
+   * 状态永远停在「正在请求麦克风权限」、识别事件一条都收不到、指令全部不执行（自测抓出）。
+   * 正在聆听时改为「中断当前会话 → 换实现 → 用新实现重新开始」。
+   */
   function injectRecognition(ctor) {
+    const wasListening = recognizer.wantListening;
+    if (wasListening) recognizer.abort();
     setRecognitionCtor(ctor);
-    recognizer.destroy();
     const support = refreshSupport();
     log(ctor ? "已注入自定义识别实现，voice.supported = true" : "已恢复真实 SpeechRecognition");
+    if (wasListening) start();
     return support;
   }
 

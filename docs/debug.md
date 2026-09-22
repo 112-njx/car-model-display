@@ -282,6 +282,39 @@
 
 ---
 
+## Wave 1 · T6 语音控车引擎（Web Speech API）· B 段
+
+### 记录 06 · 2026-09-22 11:20 · B 段接入 contract-v1（用 merge 而非 rebase）
+
+- **轮次目标**：接入 T2 的契约层，完成 `useVoiceControl` + `window.__carDisplayVoiceInject`，端到端自测。
+- **关键决策 / 问题**：
+  1. **【与任务书的偏差，已上报】** 任务书写「`git fetch origin contract-v1` 并 rebase」，但 `wave1/t6` 的 A 段 4 次提交**已经推送**，rebase 会重写历史、必须 force push——而纪律第 1 条明确禁止 force push / 改写历史。**实际改用 `git merge origin/contract-v1`**：效果等价（我的工作叠在 T2 之上、T8 合并时无差别），且无需 force push。冲突只有 `docs/debug.md` 一处（追加型共享日志），已按「两边都保留」解决（T2 段落在前、T6 段落在后，人工配置区行号顺延）。
+  2. **契约核对结论**：T2 的 `carConfig.js` / `useCarStore.js` 与 §13.2 逐项一致（action 名与签名、`voice` 片字段、`carStore` 句柄、三个派生纯函数）。两点值得记：
+     - `isAllClosed()` 的语义是「**部件全关且灯光全灭**」、`closeAll()` 也是「部件 + 灯光」——这**印证了我把「全部关闭」实现为含灯光的决定是对的**（记录 01 的关键决策 4 从"我的判断"升级为"与契约一致"）。
+     - `voice.lastCommand` / `error` 初值是 `null`（不是空串），故 `syncVoiceState` 对空值写 `null`。
+  3. **`lastCommand` 语义定案**：契约文档未细化。定为「**最近一条成功执行的指令**」，识别失败时**不改写**（保持上一条）。理由：失败即未执行，清成 `null` 看起来像缺陷；识别到的原文已在 `transcript` 里。
+  4. **沙盒改为双模式**：新增「真 store（VoiceControl）」模式，直接挂载 `<VoiceControl/>`，走 `useVoiceControl` → carConfig 词表 → 真 store → 真 toast。这样在**不碰 `App.jsx`** 的前提下就能端到端验证 B 段接线。两种模式共用同一套 DOM 结构与同一套断言。
+- **关键问题（本轮自测抓出的 1 个真 bug + 4 个自测环境问题）**：
+  1. **【真 bug，最重要】注入后整条链路静默失效**。现象：点「注入回放 mock」后点麦克风，状态**永远停在「正在请求麦克风权限…」**，mock 一直在回放但**一条指令都没执行**（`store.voice.lastCommand` 为 null、toast 0 条、部件全关）。根因：`voiceController.injectRecognition()` 里调了 `recognizer.destroy()`——那会**清空识别器的事件监听器**，而控制器还要继续复用同一个识别器实例（只是换掉它内部 new 出来的构造函数），于是此后所有 `status`/`result` 事件都收不到。修法：改为**不 destroy**；若正在聆听则 `abort()` 当前会话 → 换实现 → 用新实现重新 `start()`。
+     **为什么之前没抓到**：A 段那版沙盒的 mock 断言太弱（只检查日志里有没有 `mock 回放` 字样与 chip 是否存在，而这两者都不依赖控制器真正执行）。本轮把断言换成「日志里必须出现 **`识别 执行：`** 前缀」——该前缀只可能由识别结果链路产生（手动输入的前缀是 `手动输入 执行：`），才把这个 bug 逼出来。
+  2. **调试端口与其他 Agent 撞车**：自测脚本原先固定用 9333/9335，结果连到了**别人（T2）的 Edge 实例**上（页面是 `127.0.0.1:5180`），表现为「找不到我的页面 target」。修法：改用 `--remote-debugging-port=0` + 读 user-data-dir 下的 `DevToolsActivePort` 拿实际端口，随机且必定是自己的实例；退出时用 `taskkill /F /T /PID` 杀整棵进程树（只 kill 父进程会留下 headless 子进程堆积）。
+  3. **dev server 端口**：5173/5174/5175 均被其他会话占用，T6 的实例落在 **5176**（T2 也踩过同一个坑，落在 5174）。
+  4. **`carConfig.js` 无法在 Node 里直接 import**（用了 Vite 的 `import.meta.env.BASE_URL`），因此「换 carConfig 词表后用例是否仍全绿」这项校验只能在浏览器里做——已在沙盒用例卡里加了 carConfig 词表一行。
+  5. **3 处断言写错**（非产品缺陷）：把 mock 回放块插进场景函数后，第 5 节读到了「回放之后」的状态；「打开」属 `missing-target` 而非 `unrecognized`，提示文案不同；`.kv dd` 索引取到别的卡片。均已修正。
+- **自测结果**：
+  - **沙盒页双模式全链路：76 项断言全部通过**（headless Edge 153 + CDP）。含：默认词表与 **carConfig 词表各 108/108** 用例、两种模式各 11 项链路断言 + 7 项负例 + 7 项 mock 回放、真 store 的 `voice`/`toast` 接线 5 项、降级路径 9 项、0 console error。
+  - `node app/src/voice/commandCases.js`：108/108。
+  - `node app/tmp/t6-recognition.test.mjs`：22 项通过（回归）。
+  - **`npm run build`：✅ 13.96s**；**沙盒页纳入构建输入：✅ 21.12s**。
+  - **合并后主应用冒烟：14 项通过**——canvas 正常、无模块解析错误、§13.3 三个钩子（`__carDisplayStore` / `__carDisplaySceneAudit` / `__carDisplayCameraAudit`）自动安装、store 契约字段齐（parts 10 / lights 2 / cameraView hero / voice 片）、`setPart` 与 `closeAll` 可驱动、排除 WebGPU/headless 噪声后控制台 0 错误。
+- **commit**：（见下一条提交）
+- **遗留项**：
+  1. **真机麦克风识别仍未测**（headless 无麦克风、本机无 Chrome），登记人工配置区 #7。
+  2. T9 的 `verify-voice.mjs` 尚未跑（属 T9），《挂载说明》§4 已给出完整 mock 契约与可复用用例集。
+  3. `voice/voice.sandbox.html` 仍不在 `npm run build` 产物内（需改 `vite.config.js`，T6 无权），已给 T8/T10a 一行配置。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。

@@ -1,30 +1,27 @@
 /**
  * T6 语音控车 · 自测沙盒入口（由 voice.sandbox.html 加载）
  *
- * 契约无关：本页**不 import 主应用的 store / App / 场景**，只用自己的「假车状态」承接 executePlan，
- * 因此可在 T2 的 carConfig / useCarStore 落地之前独立自测整条链路。
+ * 两种模式，共用同一套 DOM 结构（同一套断言在两种模式下都能跑）：
+ *   ① 假 store（A 段链路）：页面自建假 store 承接 executePlan，**不碰主应用 store**，
+ *      用来验证「解析 → 计划 → 动作」的映射本身。
+ *   ② 真 store（B 段链路）：挂载**真正的 `<VoiceControl/>`**，走 `useVoiceControl` → carConfig 词表
+ *      → 真 store（§13.2）→ 真 toast。用手动输入驱动即可在**无麦克风**环境下验证整条接线。
  *
- * 状态机复用 `voiceController.js` —— 与 B 段主应用是**同一份实现**，
- * 因此这里跑过的断言覆盖的就是最终发布的代码，而不是一份平行的仿制品。
- *
- * 自测能力：
- *   1. 能力探测结果（supported / secure / injected / 中文降级文案）
- *   2. 真实麦克风链路（需 https 或 localhost 的 Chrome / Edge）
- *   3. mock 注入链路：注入回放 mock（等价于 §13.3 ④ 的 window.__carDisplayVoiceInject）
- *   4. 降级路径：强制「不支持」「非安全上下文」
- *   5. 手动输入指令（headless 环境无麦克风时的主要自测手段）
- *   6. parseCommand 全量用例一键跑
+ * 本页始终不 import `App.jsx` / 场景 / UI，因此不影响主入口，也不需要 T8 先完成集成。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { carStore } from "../state/useCarStore.js";
 import { DEFAULT_VOCABULARY, describeActions } from "./commands.js";
 import { parseCommandDetailed } from "./parseCommand.js";
 import { runCommandCases } from "./commandCases.js";
-import { detectSupport, queryMicrophonePermission, setSupportOverrideForTest } from "./recognition.js";
+import { detectSupport, getInjectedCtor, queryMicrophonePermission, setSupportOverrideForTest } from "./recognition.js";
 import { createSnapshot, createVoiceController } from "./voiceController.js";
 import { cancelSpeech, isSpeechSynthesisSupported, speak } from "./synthesis.js";
 import { VoiceButton } from "./VoiceButton.jsx";
+import { VoiceControl } from "./VoiceControl.jsx";
+import { VOICE_VOCABULARY } from "./useVoiceControl.js";
 
 const VOCAB = DEFAULT_VOCABULARY;
 
@@ -116,21 +113,37 @@ function createFakeCarState() {
   return { parts, lights, cameraView: "hero", orbits: 0, bumps: 0 };
 }
 
+/** 真 store 状态 → 与假车状态相同的展示结构（同一套断言可用） */
+function fromStore(state) {
+  if (!state) return { parts: {}, lights: {}, cameraView: "—", orbits: 0, bumps: "—" };
+  return {
+    parts: state.parts || {},
+    lights: state.lights || {},
+    cameraView: state.cameraView,
+    orbits: state.cameraCommand?.token ?? 0,
+    bumps: state.lastInteractionAt,
+  };
+}
+
 function Sandbox() {
+  const [mode, setMode] = useState("fake");
   const [snap, setSnap] = useState(createSnapshot);
   const [car, setCar] = useState(createFakeCarState);
   const [logs, setLogs] = useState([]);
   const [manual, setManual] = useState("打开左前车窗");
+  const [permission, setPermission] = useState("unknown");
+  const [realState, setRealState] = useState(() => carStore.getState());
 
-  const controllerRef = useRef(null);
+  const fakeControllerRef = useRef(null);
+  const realControllerRef = useRef(null);
 
   const log = useCallback((text) => {
     const stamp = new Date().toLocaleTimeString("zh-CN", { hour12: false });
     setLogs((prev) => [`[${stamp}] ${text}`, ...prev].slice(0, 120));
   }, []);
 
-  // ── 假 store 的 action（名字与 §13.2 一致，便于 B 段原样替换为真实 store）──
-  const api = useMemo(
+  // ── 假 store 的 action（名字与 §13.2 一致，便于对照真 store）──
+  const fakeApi = useMemo(
     () => ({
       setPart: (id, open) => setCar((state) => ({ ...state, parts: { ...state.parts, [id]: open } })),
       openGroup: (groupId) =>
@@ -155,47 +168,62 @@ function Sandbox() {
 
   useEffect(() => {
     const controller = createVoiceController({
-      api,
+      api: fakeApi,
       vocabulary: VOCAB,
       onChange: setSnap,
       onLog: log,
       speak,
     });
-    controllerRef.current = controller;
+    fakeControllerRef.current = controller;
     controller.refreshSupport();
-    controller.refreshPermission();
     return () => {
       controller.destroy();
-      controllerRef.current = null;
+      fakeControllerRef.current = null;
       cancelSpeech();
     };
-  }, [api, log]);
+  }, [fakeApi, log]);
 
-  const controller = () => controllerRef.current;
+  // 真 store 镜像（§13.3 ① 的 store 句柄）
+  useEffect(() => {
+    setRealState(carStore.getState());
+    return carStore.subscribe((state) => setRealState(state));
+  }, []);
+
+  useEffect(() => {
+    queryMicrophonePermission().then(({ state }) => setPermission(state));
+  }, []);
+
+  const activeController = () => (mode === "real" ? realControllerRef.current : fakeControllerRef.current);
 
   const handleInject = useCallback(() => {
-    controller()?.injectRecognition(createReplayMockClass(log));
-  }, [log]);
+    activeController()?.injectRecognition(createReplayMockClass(log));
+  }, [log, mode]);
 
   const handleRestore = useCallback(() => {
-    controller()?.injectRecognition(null);
-  }, []);
+    activeController()?.injectRecognition(null);
+  }, [mode]);
 
   const handleOverride = useCallback(
     (code) => {
       setSupportOverrideForTest(code);
-      const next = controller()?.refreshSupport() || detectSupport();
+      const next = activeController()?.refreshSupport() || detectSupport();
       log(`强制降级：${code || "关闭"}（supported=${next.supported}）`);
     },
-    [log],
+    [log, mode],
   );
 
   const handleManual = useCallback(() => {
     const text = manual.trim();
-    if (text) controller()?.handleAlternatives([text], "手动输入");
-  }, [manual]);
+    if (text) activeController()?.handleAlternatives([text], "手动输入");
+  }, [manual, mode]);
+
+  const handleRealReady = useCallback((controller) => {
+    realControllerRef.current = controller;
+  }, []);
 
   const caseReport = useMemo(() => runCommandCases({ vocabulary: VOCAB }), []);
+  // B 段关键校验：换成 **carConfig 派生的词表**后，全部用例是否仍然通过
+  const caseReportCfg = useMemo(() => runCommandCases({ vocabulary: VOICE_VOCABULARY }), []);
   const groups = useMemo(() => {
     const map = new Map();
     for (const item of caseReport.results) {
@@ -209,13 +237,25 @@ function Sandbox() {
 
   const detail = parseCommandDetailed(manual, { vocabulary: VOCAB });
 
+  const support = detectSupport();
+  const injected = Boolean(getInjectedCtor());
+  const supported = mode === "real" ? Boolean(realState?.voice?.supported) : snap.supported;
+  const displayCar = mode === "real" ? fromStore(realState) : car;
+  const toasts = realState?.toast || [];
+
   return (
     <div>
       <div className="toolbar">
-        <button type="button" className="tool" aria-pressed={snap.injected} onClick={handleInject}>
+        <button type="button" className="tool" aria-pressed={mode === "fake"} onClick={() => setMode("fake")}>
+          假 store（契约无关）
+        </button>
+        <button type="button" className="tool" aria-pressed={mode === "real"} onClick={() => setMode("real")}>
+          真 store（VoiceControl）
+        </button>
+        <button type="button" className="tool" aria-pressed={injected} onClick={handleInject}>
           注入回放 mock
         </button>
-        <button type="button" className="tool" aria-pressed={!snap.injected} onClick={handleRestore}>
+        <button type="button" className="tool" aria-pressed={!injected} onClick={handleRestore}>
           恢复真实识别
         </button>
         <button type="button" className="tool" onClick={() => handleOverride("unsupported")}>
@@ -237,48 +277,53 @@ function Sandbox() {
           <h2>① 能力探测</h2>
           <dl className="kv">
             <dt>supported</dt>
-            <dd className={snap.supported ? "ok" : "bad"}>{String(snap.supported)}</dd>
+            <dd className={supported ? "ok" : "bad"}>{String(supported)}</dd>
             <dt>secure</dt>
-            <dd className={snap.secure ? "ok" : "warn"}>{String(snap.secure)}</dd>
+            <dd className={support.secure ? "ok" : "warn"}>{String(support.secure)}</dd>
             <dt>injected</dt>
-            <dd className={snap.injected ? "ok" : ""}>{String(snap.injected)}</dd>
+            <dd className={injected ? "ok" : ""}>{String(injected)}</dd>
             <dt>code</dt>
-            <dd>{snap.injected ? "injected" : snap.supported ? "ok" : snap.secure ? "unsupported" : "insecure-context"}</dd>
+            <dd>{injected ? "injected" : supported ? "ok" : support.secure ? "unsupported" : "insecure-context"}</dd>
             <dt>麦克风权限</dt>
-            <dd>{snap.permission}</dd>
+            <dd>{permission}</dd>
             <dt>语音播报</dt>
             <dd>{String(isSpeechSynthesisSupported())}</dd>
-            {snap.message ? (
+            {support.message ? (
               <>
                 <dt>降级提示</dt>
-                <dd className="warn">{snap.message}</dd>
+                <dd className="warn">{support.message}</dd>
               </>
             ) : null}
           </dl>
         </section>
 
         <section className="card">
-          <h2>② 语音控车（VoiceButton）</h2>
-          <VoiceButton
-            status={snap.status}
-            supported={snap.supported}
-            transcript={snap.transcript}
-            reply={snap.reply}
-            hint={snap.hint}
-            message={snap.message}
-            error={snap.error}
-            onToggle={() => controller()?.toggle()}
-            onRetry={() => controller()?.start()}
-            speechEnabled={snap.speechEnabled}
-            onToggleSpeech={() => {
-              const next = !snap.speechEnabled;
-              if (!next) cancelSpeech();
-              controller()?.setSpeechEnabled(next);
-            }}
-            speechSupported={isSpeechSynthesisSupported()}
-          />
+          <h2>② 语音控车{mode === "real" ? "（VoiceControl · 真 store）" : "（VoiceButton · 假 store）"}</h2>
+          {mode === "real" ? (
+            <VoiceControl onReady={handleRealReady} onLog={log} />
+          ) : (
+            <VoiceButton
+              status={snap.status}
+              supported={snap.supported}
+              transcript={snap.transcript}
+              reply={snap.reply}
+              hint={snap.hint}
+              message={snap.message}
+              error={snap.error}
+              onToggle={() => fakeControllerRef.current?.toggle()}
+              onRetry={() => fakeControllerRef.current?.start()}
+              speechEnabled={snap.speechEnabled}
+              onToggleSpeech={() => {
+                const next = !snap.speechEnabled;
+                if (!next) cancelSpeech();
+                fakeControllerRef.current?.setSpeechEnabled(next);
+              }}
+              speechSupported={isSpeechSynthesisSupported()}
+            />
+          )}
           <p className="sub" style={{ marginTop: 12, marginBottom: 0 }}>
-            状态：<strong>{snap.status}</strong>
+            状态：<strong>{mode === "real" ? realState?.voice?.status || "idle" : snap.status}</strong>
+            {mode === "real" ? ` ｜ store.voice.lastCommand：${String(realState?.voice?.lastCommand)}` : ""}
           </p>
         </section>
 
@@ -325,28 +370,50 @@ function Sandbox() {
         </section>
 
         <section className="card">
-          <h2>④ 假车状态（executePlan 的结果）</h2>
+          <h2>④ {mode === "real" ? "真 store 状态（carStore.getState()）" : "假车状态（executePlan 的结果）"}</h2>
           <div className="chips">
             {VOCAB.parts.map((part) => (
-              <span key={part.id} className={`chip ${car.parts[part.id] ? "chip--open" : ""}`}>
+              <span key={part.id} className={`chip ${displayCar.parts[part.id] ? "chip--open" : ""}`}>
                 {part.label}
-                {car.parts[part.id] ? " 开" : " 关"}
+                {displayCar.parts[part.id] ? " 开" : " 关"}
               </span>
             ))}
           </div>
           <div className="chips" style={{ marginTop: 8 }}>
             {VOCAB.lights.map((light) => (
-              <span key={light.id} className={`chip ${car.lights[light.id] ? "chip--on" : ""}`}>
+              <span key={light.id} className={`chip ${displayCar.lights[light.id] ? "chip--on" : ""}`}>
                 {light.label}
-                {car.lights[light.id] ? " 亮" : " 灭"}
+                {displayCar.lights[light.id] ? " 亮" : " 灭"}
               </span>
             ))}
-            <span className="chip chip--open">视角：{car.cameraView}</span>
-            <span className="chip">环绕次数：{car.orbits}</span>
-            <span className="chip">bumpInteraction：{car.bumps}</span>
+            <span className="chip chip--open">视角：{displayCar.cameraView}</span>
+            <span className="chip">环绕次数：{displayCar.orbits}</span>
+            <span className="chip">bumpInteraction：{displayCar.bumps}</span>
           </div>
-          <button type="button" className="tool" style={{ marginTop: 12 }} onClick={() => setCar(createFakeCarState())}>
-            复位假车状态
+          {mode === "real" ? (
+            <dl className="kv" style={{ marginTop: 12 }}>
+              <dt>store.voice.status</dt>
+              <dd>{String(realState?.voice?.status)}</dd>
+              <dt>store.voice.lastCommand</dt>
+              <dd>{String(realState?.voice?.lastCommand)}</dd>
+              <dt>store.voice.supported</dt>
+              <dd>{String(realState?.voice?.supported)}</dd>
+              <dt>store.toast</dt>
+              <dd>
+                {toasts.length} 条{toasts.length ? ` ｜ 最后：${toasts[toasts.length - 1].text}（${toasts[toasts.length - 1].level}）` : ""}
+              </dd>
+            </dl>
+          ) : null}
+          <button
+            type="button"
+            className="tool"
+            style={{ marginTop: 12 }}
+            onClick={() => {
+              setCar(createFakeCarState());
+              if (mode === "real") carStore.getState().closeAll();
+            }}
+          >
+            复位状态
           </button>
         </section>
 
@@ -359,6 +426,10 @@ function Sandbox() {
               </span>
             ))}
           </div>
+          <p className={`case-carcfg ${caseReportCfg.failed.length ? "bad" : "ok"}`} style={{ margin: "0 0 8px" }}>
+            carConfig 词表（B 段实际使用的词表）：{caseReportCfg.passed}/{caseReportCfg.total}
+            {caseReportCfg.failed.length ? ` ｜ 失败：${caseReportCfg.failed.map((item) => item.text).join("、")}` : " 通过"}
+          </p>
           {caseReport.failed.length ? (
             <table>
               <thead>
