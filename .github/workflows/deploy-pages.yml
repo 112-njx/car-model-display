@@ -1,0 +1,63 @@
+# GitHub Pages 部署（T10a 交付准备，由 T8 代做）
+#
+# 设计说明（为什么是**手动触发**而不是 push 触发）：
+#   T1 当初刻意没有复制 FormDrive 原仓的 `deploy-pages.yml`，理由是"目标仓 Pages 未配置，
+#   push 触发的 workflow 会必然失败刷红"。T10a 需要交付该产物，但又不能引入"每次 push 都红"的噪声，
+#   因此采用 **`workflow_dispatch` 手动触发**：等仓库 Settings → Pages 里把 Source 设为
+#   "GitHub Actions" 之后，在 Actions 页手动跑一次即可；此后如需改为 push 自动部署，
+#   把下面的 `on:` 换成注释里的 push 写法即可。
+#
+# 手机语音的硬性前提：Web Speech API 要求**安全上下文**（https 或 localhost）。
+# GitHub Pages 与 Vercel 都提供 https，因此这是手机真机演示语音控车的可行入口之一。
+name: Deploy to GitHub Pages
+
+on:
+  workflow_dispatch:
+  # 若已确认 Pages 配置就绪，可改为 push 自动部署：
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: 安装依赖
+        working-directory: app
+        run: npm ci
+
+      - name: 构建
+        working-directory: app
+        run: npm run build
+        # base 已在 vite.config.js 固定为 './'，因此部署到 /<repo>/ 子路径无需额外配置
+
+      - name: 上传产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
