@@ -1,3 +1,20 @@
+/**
+ * studioConfig.js —— **legacy 配置（仅过渡用）**
+ *
+ * T2 起车辆契约以 config/carConfig.js 为准（§13.1）：部件 / 灯光 / 相机 / 交互阈值 / 质量分级
+ * 一律从 carConfig 读取。本文件被 T1 基线的旧组件（VehicleModel / CameraRig / HeadlightRig /
+ * StudioEnvironment / ControlDeck / CameraControls / HeroCopy / InfoDialog / VehicleSelector）
+ * 引用，T2 按文件边界（§12.2）不跨文件接线，故原样保留以保证工程全程可编译。
+ *
+ * 迁移去向（由各归属 Agent 在其分支内完成，T2 不代做）：
+ *   VEHICLES.tesla.parts  → carConfig.PARTS（逻辑 id + 运动学参数）
+ *   VEHICLES.tesla.url / rotation / groundOffset → carConfig.MODEL_URL / MODEL_TRANSFORM
+ *   VEHICLES.tesla.*Names → carConfig.MODEL_MATERIALS
+ *   CAMERAS               → carConfig.CAMERA_VIEWS（含 position/target）
+ *   PAINTS / WHEELS / STUDIOS / HEADLIGHT_RIGS → 新契约未收录（配置器属性已裁剪，§3.2）；
+ *     若 T3/T4/T5 仍需要，登记 docs/contracts/CHANGELOG.md 申请迁入 carConfig，勿各自复制。
+ */
+
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 
 export const PAINTS = {
