@@ -903,6 +903,100 @@
 
 ---
 
+## Wave 2 · T8 集成组装 + 移动端/性能打磨（与 T9 滚动并行）
+
+> 集成分支 `wave2/integration`（基于 `main` 77dc507）。按 roadmap §12.4 的顺序逐步合并，每步 build + 自测后再进下一步。
+> T9 的 `scripts/verify-*.mjs` 为联调/自检工具。
+
+### 记录 T8-01 · 2026-09-22 · 集成分支建立 + 契约基座 + 六条分支合并
+
+- **轮次目标**：按 §12.4 建立集成分支，逐步合入 T2 契约基座与 T3/T4/T5/T6/T7/T8p 六条分支，每步 build 全绿。
+- **改动文件**（按步）：
+  | 步骤 | 内容 |
+  | --- | --- |
+  | ① | 合 `contract-v1`(T2 `6bcb863`)。**零冲突**——T2 分支基于 `a4c1bf4`、未改 `VehicleModel.jsx`，合并取 main 侧，故 T1 已获批的字节读数修复未被回退 |
+  | ② | 合 T6 `voice/**`、T8p `perf/**`、T9 `scripts/**`；用 `git checkout wave1/t5 -- app/src/interaction` 单独取 T5 的**纯新增目录**（§12.4 第 2 步要求「不动现有文件」） |
+  | ③ | 按顺序合 T3 `ac4ebf8` → T7 `1c04ec7` → T4 `5bd047e` → T5 `47ec282` |
+  | ④ | 统一改写 `App.jsx` / `StudioCanvas.jsx`（`main.jsx` 未改：T8p 的 MOUNT.md 给了方案 A/B 二选一，选了 A） |
+  | — | 额外入库：`docs/prompt.md`、`docs/roadmap.md`（经人工裁定，先提交到 `main` 再并入集成分支） |
+- **关键决策 / 问题**：
+  1. **T3 分支在本会话中途才推上来**。开工时 `wave1/t3` 停在 T2 提交、`origin` 无该分支，一度判定为「T3 完全缺失」；随后 T3 的 `ac4ebf8` 出现（T3 段 debug.md 说明是 MainAgent 代收）。**教训：并行会话期间分支状态会变，下判定前应重新 `git for-each-ref` 复核。**
+  2. **T10a 确实完全缺失**（无分支、无 commit、无 `vercel.json`/`THIRD-PARTY.md`/`docs/release-notes.md`/`.github/workflows`；`vite.config.js` 的 `base` 仍是 `GITHUB_ACTIONS ? "/FormDrive/" : "/"`）。已上报人工 → **人工裁定「由 T8 代做 T10a 全部」**，见记录 T8-04。
+  3. **`docs/prompt.md` / `docs/roadmap.md` 此前只是索引里的空占位**（`git add` 了空文件、内容在工作树），导致任何 merge 都被 "local changes would be overwritten" 挡住。经人工裁定由 T8 提交到 `main`（`7b7dc0b`）再并入。
+  4. **`docs/debug.md` 与 `docs/contracts/CHANGELOG.md` 被六方共同追加，每次合并必冲突**。按 §12.4「保留各方记录」处理，并写了两个可复用消解器（仓库外 `.t8tmp/`，不入交付）：`resolve-debug.mjs`（把新章节归位到「人工配置区」之前、表格行按现有最大号续号）、`resolve-changelog.mjs`（两侧行全保留后整体重编号）。
+  5. **CHANGELOG 编号撞号是必然的**：T4/T5/T7/T9 各自都把新增行编成「0010」（并行分支各自从 0009 续号）。按「只增不改」**未丢弃任何一方的行**，整体重编号为 0001..0018，并追加 0017 记录新旧号对照。**被改的只有编号列，正文一字未动。**
+  6. **`hooks/useVehicleGLTF.js` 不在任何分支的独占列里**（§12.2 未列），属集成期接线范围，故由 T8 改（详见记录 T8-02）。
+- **自测结果**：
+  - 每步 `npm run build` 全绿：628 → 629 → 628 → 631 → 653 modules。
+  - 纯逻辑用例：`voice/commandCases.js` **108/108**、`interaction/selftest/pick.selftest.mjs` **22/22**、`perf/selfTest.mjs` **66/66**、`perf/contractCheck.mjs`（`ssrLoadModule` 加载真契约）**29/29**。
+  - CDP 实测（Edge 153 headless + 真实 Intel GPU）：契约三钩子就绪、旧 UI 经 shim 仍渲染、经 `carStore.setPart` 驱动后 `sceneAudit` 同步（shim 单向镜像成立）、控制台 0 错误。
+- **commit**：`c9bdecd`（契约基座）→ `c030c5b`（第 2 步）→ `26f3488` / `66119a6` / `dbb47ea` / `197d850`（第 3 步四条）
+- **遗留项**：见记录 T8-03 / T8-04 与人工配置区。
+
+### 记录 T8-02 · 2026-09-22 · 统一组装 + 契约增补受理 + 修 T3 场景贴图失效
+
+- **轮次目标**：按五份《挂载说明》统一组装 `App.jsx`/`StudioCanvas.jsx`；受理归 T8 的契约「只增」申请；修复组装后暴露的缺陷。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/App.jsx` | **统一组装**：`PerfProvider` 包根 + `SceneReadyBridge`（T8p MOUNT §4 的首屏就绪通知）+ `ControlPanel voiceSlot={<VoiceControl/>}`（T6 §2 走 T4 预留容器位，全站只留一个麦克风入口）+ `ToastHost` + `LoadingScreen` |
+  | `app/src/components/scene/StudioCanvas.jsx` | `StudioEnvironment`→`CockpitEnvironment`（T3 §2）并传 `qualityFeatures`（T3 §3）；`dpr={[1,dprMax]}`、`shadows={shadow}`（T8p MOUNT §2）；删 `VehicleAssetLoader` |
+  | `app/src/components/scene/StudioEnvironment.jsx`、`VehicleAssetLoader.jsx` | **删除**（前者被 T3 替换；后者是多车型配置器的「预载下一台车」，单车固化后 `pendingVehicle` 恒为 null、永远渲染 null，属死代码） |
+  | `app/src/config/carConfig.js` | **增** `APPEARANCE`（只增，CHANGELOG 0016） |
+  | `app/src/state/useCarStore.js` | **增** `loading` 片 + `setLoadingProgress` / `setLoadingSceneReady`（只增，CHANGELOG 0015）；原有 8 个 state 片与全部 action 一字未动 |
+  | `app/src/hooks/useVehicleGLTF.js` | 字节进度改写 `carStore.loading`（原写 shim） |
+  | `app/src/components/scene/VehicleModel.jsx` | 去 shim：加载态读 `loading`、外观读 `APPEARANCE`；`trackInitialTransfer` 恢复为 `true`（T1 记录 05 已获批的字节读数修复） |
+  | `app/src/components/scene/ground/{ContactShadow,TechGrid,SweepLight,ReflectiveFloor}.jsx` | **缺陷修复**：纹理就绪前不渲染（见下） |
+- **关键决策 / 问题**：
+  1. **组装后地面出现一块硬边深色矩形（视觉确认发现，非断言发现）**
+     - **现象**：车底不是柔和接触阴影，而是一块 7.6×3.5 的硬边纯色矩形；科技网格、环形光带、地面 alpha 边也都不对。
+     - **根因（代码级取证）**：`useCanvasTexture` 首帧返回 `null`（纹理在 effect 里创建），消费方材质因此**先以 `map=null` 出生**；纹理到位后 R3F 把 `material.map` 赋上新纹理，**但不会置 `material.needsUpdate`**——`@react-three/fiber` 的 `applyProps` 在 `events-*.esm.js` 的 "Else, just overwrite the value" 分支只做 `root[key] = value`（已在 `node_modules` 内逐行核对）。而 three 的 `USE_MAP` / `USE_ALPHAMAP` 是**编译期 define**，不重编译着色器就等于纹理从未生效。
+     - **修法**：四个消费方改为**纹理就绪后再渲染**（`if (!texture) return null`），使材质「出生即带 map」。修后视觉确认：柔和接触阴影、科技网格、环形光带、地面 alpha 边全部恢复。
+     - **为何此前没被发现**：T3 分支的自测截图拍的是 T7 分支（当时场景仍是旧 `StudioEnvironment`），T3 的 ground 只在集成后才第一次真正上屏。
+  2. **契约增补由 T8 受理**（§13.4：Wave 2 起 T2 的 owner 由 T8 承担）。三条全部「只增不改」，逐条记 CHANGELOG：`loading` 片（0015，承接 T4 的 0013）、`APPEARANCE`（0016，承接 T5 的 0014、并收窄 0009 的裁定范围）、编号重排说明（0017）。
+  3. **`loading.progress` 初值取 `null` 而非 0**：T4 的 `LoadingScreen` 用 `loading?.progress ?? dreiProgress` 兜底，初值 0 会把进度条钉死在 0%。取 `null` 读作「未知」，回落 drei。`sceneReady` 初值 `false`，由 `VehicleModel` 首帧渲染后置真（与 T1 基线 shim 行为一致）。
+- **自测结果**：
+  - `npm run build`：✅ **653 modules**（T1 基线 625 → 组装后 653）。
+  - CDP 组装自检（dev `http://127.0.0.1:5191/`）：渲染器 `webgpu`；`parts` 10 / `lights` 2 / `hitTargets` **12**（T5 已注册）/ `perf {fps,dpr,tier}`（T8p 已注册）/ `cameraAudit` 六字段齐（T7 已注册）；`voice.supported=true`、`__carDisplayVoiceInject` 为 function；DOM 组装齐（面板 / 语音 / Toast / 跳过导航）；**界面文案全中文，无英文残留**。
+  - **首屏字节读数恢复**：`loading = {sceneReady:true, progress:100, loadedBytes:22671680, totalBytes:22671680}`（22.67 MB ≈ 21.62 MiB）——即 roadmap §2.2 列为「直接继承」的字节级进度条，在删 shim 后仍然可用。
+  - **视觉确认（真图，非仅断言）**：`.t8tmp/shot-fixed.png` —— Tesla Model 3 正确渲染、深色青蓝中控底、柔和接触阴影、科技网格、环形光带、地面倒影；对比修复前的 `shot-desktop-webgl.png` 中的硬边黑矩形。
+- **commit**：`9a020c7`（组装）、`d5e8765`（贴图修复）、`703c915`（契约增补）
+- **遗留项**：见记录 T8-03。
+
+### 记录 T8-03 · 2026-09-22 · 三通道联调 + 语音驱动入口 + 性能实测
+
+- **轮次目标**：§12.4 第 5 步三通道一致性联调；受理 T9 登记的语音驱动入口缺口；为「WebGPU 策略」做实测取证。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/voice/useVoiceControl.js` | **增** `window.__carDisplayVoiceStart` / `Stop` / `Toggle` + `__carDisplayVoiceControllerCount`（只增，CHANGELOG 0018） |
+  | `app/src/voice/VoiceButton.jsx` | 按钮加 `data-testid="cd-voice-toggle"`（一个属性，CHANGELOG 0018） |
+- **关键决策 / 问题**：
+  1. **三通道一致性联调结果**（同一部件 `window_lf`，三条通道各开一次）：
+     - **① 同一个 store：PASS** —— 三条通道的 `store.parts.window_lf` 终态一致（都 `true`），且都由同一条 `VehicleModel` 阻尼动画驱动（跨 0.5/0.9/0.99 的耗时：按钮 231/1254/3102 ms、3D 点击 109/1015/2540 ms、语音 93/1165/2781 ms；差值落在 CDP 采样往返的分辨率内。实现上**只存在一条动画代码路径**，不存在能产生差异的第二份实现）。
+     - **② Toast 文案：不一致（待人工裁定）** —— 按钮与 3D 点击都是 `左前车窗已打开`(success)，语音是 `已执行：打开左前车窗`(success)。**这是两个模块各自的既有设计**：T4 的《挂载说明》§3 明确要求「T5、T6 请直接 import `strings.js` 拼装 Toast 文案，以保证同一动作在按钮/点击/语音三条通道下的反馈文案完全一致」，而 T6 用的是自己的 `已执行：<回执>`（其挂载说明 §5 也如此描述）。**T8 未擅自改 T6 的文案**（属 UX 措辞决策），列入待裁定。
+     - **③ 3D 点击通道可用**：`hitTargets[].screen` 回投后的坐标确实落在 `<canvas>` 上且点击生效（T5《挂载说明》§3 所称「回投验证」成立）。
+  2. **语音驱动入口缺口（T9 登记为 CHANGELOG 0010）由 T8 受理**：同时落地 T9 建议的 ① 程序化入口与 ② 稳定选择器。自测：`__carDisplayVoiceStart()` 返回 1（1 个已挂载控制器），mock 实例数 1、`voice.status` 变 `listening`。
+  3. **性能实测**（人工指定「先实测再定 WebGPU 策略」）：
+     - **先做对照**：同一无头实例里空白页 rAF 上限 **156.9 fps** ⇒ 无头环境本身不是瓶颈；`WEBGL_debug_renderer_info` 显示 `ANGLE (Intel, Intel(R) UHD Graphics, D3D11)` ⇒ **用的是真 GPU，不是 SwiftShader 软件渲染**。
+     - **分辨率缩放测试（决定性判据）**：1440×900 → **30.5 fps**、1024×640 → **46.1 fps**、640×400 → **75.7 fps**，p50 帧时 29 / 19.2 / 9.9 ms。帧率随像素数近似线性 ⇒ **GPU fill-rate 瓶颈**，不是 CPU/JS 瓶颈。
+     - **后端 A/B（同一套 `verify-parts` 78 项）**：**WebGPU 68 PASS / 10 FAIL**（含「运行期无未捕获异常」FAIL，实测 12 条 `TypeError: Invalid value used as weak map key`，栈落在 `three_webgpu` 的 `Textures.updateTexture`）；**WebGL 74 PASS / 4 FAIL**（异常 **0** 条）。WebGPU 下多条「关闭后 progress 未收敛」的 FAIL，与 T7 记录的「该异常抛在渲染调用内部会打死 R3F 帧循环」一致。
+     - **另做收敛专项验证**：直接用 `carStore.setPart` 驱动 4 个部件各开/关一次，9s 后 `progress` **全部精确为 0** ⇒ 动画本身无缺陷，`verify-parts` 的残余 FAIL 属**脚本侧采样竞态**（其自身日志也出现 `Cannot read properties of undefined (reading 'open')` 的求值异常）。
+  4. **端口陷阱升级版（新发现，比 T2 记录的更隐蔽）**：本机 `5180` 上同时存在两个监听——`0.0.0.0:5180`（我的新实例）与 `127.0.0.1:5180`（另一并行会话的旧实例）。Windows 允许二者共存，而 loopback 连接**优先命中更具体的 `127.0.0.1` 绑定**，因此 **`--strictPort` 挡不住**：端口没被「占用」（对方绑的是另一个地址），但自测全打到别人实例上（拿到 T1 旧 UI 与旧 index.html）。**修法**：改用人工指定的独占端口 `5191`，并把验身口径从「HTTP 200 / content-type」升级为**按内容验身**（`curl /src/App.jsx | grep -c 'PerfProvider\|VoiceControl'`，或核对 `<html lang="zh-CN">`）。**此前基于 5180 的 CDP 自检结论一律作废，已用 5191 全部重做。**
+- **自测结果**：
+  - `npm run build`：✅ 653 modules。
+  - **§6 指令集经完整链路回放 12/12 全绿**（注入 T9 的 mock → `__carDisplayVoiceStart()` → `say()` → parseCommand → store action → toast）：打开/关闭车窗、打开左前门、关闭右后门、打开前/后备箱、打开/关闭大灯、看侧面/看正面、转一下、全部关闭，逐条断言 store 终态与 toast 文案。
+  - 三通道联调：① PASS；② 文案不一致（待裁定）；③ 见上。
+- **commit**：`c12a8fb`
+- **遗留项**：
+  1. **Toast 文案跨通道不一致**（待人工裁定）。
+  2. **桌面 ≥55fps 在本机测不到**：本机是 Intel UHD Graphics（低端核显），且同时跑着 6+ 个并行会话的 dev server。实测 1440×900 下 ~30fps 并自动降到 `low` 档（降档机制本身工作正常）。按 fill-rate 判据推断独显桌面达标无虞，但**需一台正常桌面机复核**。
+  3. **弱机上自动降到 `low` 会关掉反射地面**，与「视觉对标中控大屏」存在张力（`low` 档 `reflector:false`），需产品取向裁定。
+  4. `verify-pick` 与 `verify-camera` 报 SKIP（判定「T5/T7 未集成」）——与实测不符（`hitTargets` 12、`cameraAudit.position` 非空），疑为其**集成信号探测早于 GLB 加载完成**；`verify-parts` 的 4 条残余 FAIL 为采样竞态；另有一条 `未知 id 不改变 audit 终态 — cameraView "hero" → "hero"` 属**前后值相同仍判 FAIL** 的断言缺陷。**均属 T9 脚本侧，T8 不代改**，已附证据交 T9。
+  5. **步骤进度**：§12.4 第 1–5 步已完成；第 6（主题收口 `ENV_COLORS`→tokens）、7（移动端打磨）、8（真机调参）、9（删 shim + legacy `studioConfig`）、10（T9 回流修复）以及 T10a 代做尚未完成。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -930,3 +1024,10 @@
 | 19 | ~~§13.1 缺开合动画参数~~ | 已由 T2 在 `contract-v1` 补齐（CHANGELOG 0002：`PARTS[].motion/axis/angle/travel`）。T5 的 B 段直接消费，无需人工介入。 | 已解决 |
 | 20 | **`VehicleModel.jsx:81` 死条件** | `vehicleId === "mustang"` 在单车裁剪后恒为 false，导致加载页丢失字节级 MB 读数（T1 记录 04）。该文件属 T5 独占、T1 已留给 T5 清理。B 段已把该行等价改写为 `const trackInitialTransfer = false`（**不擅自改行为**），人工确认后改 `!initialSceneReady` 即可开启。建议修。 | 待处理（等人工确认） |
 | 21 | **车身固定外观 `APPEARANCE`** | CHANGELOG 0010（T5 提出）：涂装/轮毂配置器已按 §3.2 裁掉，但车身外观值目前只能从 legacy `studioConfig` + 兼容 shim 取；**T8 删 shim 前必须把它固化进 `carConfig`**，否则 `VehicleModel` 取不到外观值。`config/**` 属 T2 独占，T5 未擅自迁入。 | 待处理（T2/T8 受理） |
+| 22 | **T10a 完全缺失（人工已裁定由 T8 代做）** | 开工核查发现：无 `wave1/t10a` 分支、无任何 commit、无 `vercel.json` / `THIRD-PARTY.md` / `docs/release-notes.md` / `.github/workflows/*`，`app/vite.config.js` 的 `base` 仍是 `GITHUB_ACTIONS ? "/FormDrive/" : "/"`。任务书称「T10a 骨架已就位」与事实不符。已上报 → **人工裁定「由 T8 代做 T10a 全部」**。 | 待处理（T8 代做，见记录 T8-04） |
+| 23 | **桌面 ≥55fps 无法在本机验证** | 本机 GPU 为 `ANGLE (Intel, Intel(R) UHD Graphics, D3D11)`（低端核显），且同时跑着 6+ 个并行会话的 dev server。实测 1440×900 → 30.5fps、1024×640 → 46.1fps、640×400 → 75.7fps（fill-rate 线性），同机空白页 rAF 上限 156.9fps 证明不是无头环境限制。**需人工在一台独显桌面机上复核 ≥55fps**，或裁定接受低端核显上的表现。 | 待处理（需真机/另一台桌面机） |
+| 24 | **弱机自动降档会关掉反射地面，与「视觉对标中控大屏」冲突** | `QUALITY.features.low.reflector = false`，而本机帧率低于桌面阈值 45 → 自动降到 `low` → 镜面反射地面消失。降档机制本身工作正常（已实测），但"低配设备看到的是没有倒影的地面"是否可接受，属产品取向。备选：① 保持现状；② 把 `mid` 的 `reflector` 也设为 `false` 但保留更亮的假倒影贴图；③ 调低桌面降档阈值。 | 待处理（需人工裁定） |
+| 25 | **Toast 文案跨通道不一致** | 三通道联调实测：UI 按钮与 3D 点击都发 `左前车窗已打开`(success)，语音发 `已执行：打开左前车窗`(success)。T4《挂载说明》§3 要求「T5、T6 直接 import `strings.js` 以保证三通道文案完全一致」，T6 用的是自己的回执格式。**T8 未擅自改 T6 的 UX 措辞**，请裁定：① 统一到 `strings.js` 文案（改 T6）；② 保留两套（语音带「已执行：」前缀以示通道来源）；③ 其他。 | 待处理（需人工裁定） |
+| 26 | **`verify-pick` / `verify-camera` 误报 SKIP，`verify-parts` 有采样竞态** | 与实测不符：`verify-pick` 报「T5 未集成：hitTargets 为空」（实测 `hitTargets` 12 条、CDP 点击可开合），`verify-camera` 报「cameraAudit.position 为 null」（实测六字段齐全）；疑为**集成信号探测早于 22.7MiB GLB 加载完成**。`verify-parts` 4 条残余 FAIL 为采样竞态（其自身日志出现 `Cannot read properties of undefined (reading 'open')`），另有一条 `未知 id 不改变 audit 终态 — cameraView "hero" → "hero"` 属前后值相同仍判 FAIL 的断言缺陷。**均属 T9 脚本侧，T8 不代改**，证据见记录 T8-03。 | 待处理（交 T9） |
+| 27 | **WebGPU 路径稳定性（人工指定「先实测再定」）** | 实测取证：同一套 `verify-parts` 78 项，**WebGPU 68 PASS / 10 FAIL（12 条未捕获异常）**，**WebGL 74 PASS / 4 FAIL（0 条异常）**；异常栈落在 `three_webgpu` 的 `Textures.updateTexture`，T7 另记录过它"打死 R3F 帧循环导致整页失响应"。**结论待人工拍板**：① 强制 WebGL（稳定优先）；② 保留 WebGPU 优先（性能上限优先）；③ 按能力/UA 只在部分设备降级。 | 待处理（需人工裁定） |
+| 28 | **端口陷阱升级版：`--strictPort` 挡不住双绑定** | `5180` 上同时存在 `0.0.0.0:5180`（我的）与 `127.0.0.1:5180`（另一并行会话的旧实例）；Windows 允许共存，loopback **优先命中更具体的 `127.0.0.1`**，导致自测全打到别人实例（拿到旧 UI）。**修法**：用人工指定的独占端口 `5191`；验身口径改为**按内容**（`curl /src/App.jsx \| grep -c 'PerfProvider\|VoiceControl'` 或核对 `<html lang="zh-CN">`），不能只看 HTTP 200 / content-type。基于 5180 的旧自检结论已全部作废并用 5191 重做。 | 已规避（登记备查） |
