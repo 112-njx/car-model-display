@@ -7,6 +7,9 @@ import { useCarStore } from "../../state/useCarStore";
 import { registerSceneAuditSource } from "../../devtools/auditHooks";
 import { IDLE_MODES, IDLE_ROTATE_DEFAULTS, IdleAutoRotate, dampXYZ, distanceXYZ } from "./IdleAutoRotate";
 
+// 预设 id → { position, target }（§13.1 CAMERA_VIEWS；T2 已把 T1 基线的机位数值并入契约）
+const PRESETS = Object.fromEntries(CAMERA_VIEWS.map((v) => [v.id, { position: v.position, target: v.target }]));
+
 /**
  * T7 · 相机机位与待机自转（roadmap §12.3 T7 / §13.1 / §13.3③）
  *
@@ -20,9 +23,6 @@ import { IDLE_MODES, IDLE_ROTATE_DEFAULTS, IdleAutoRotate, dampXYZ, distanceXYZ 
  *
  * @param {boolean} [autoRotateEnabled] 待机自转总开关（默认 true；T8 联调可传 false 关闭）
  */
-// 预设 id → { position, target }（§13.1 CAMERA_VIEWS；T2 已把 T1 基线的机位数值并入契约）
-const PRESETS = Object.fromEntries(CAMERA_VIEWS.map((v) => [v.id, { position: v.position, target: v.target }]));
-
 export function CameraRig({ autoRotateEnabled = true }) {
   const ref = useRef();
   const camera = useThree((s) => s.camera);
