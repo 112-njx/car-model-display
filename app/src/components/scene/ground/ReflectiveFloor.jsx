@@ -116,6 +116,10 @@ export function ReflectiveFloor({ enableReflection = true, receiveShadow = true 
   const alphaTexture = useCanvasTexture(createFloorAlphaTexture, []);
   const vehicleRoot = useVehicleRoot(enableReflection);
 
+  // 纹理就绪前不渲染（理由同 ContactShadow.jsx：R3F 不会在 map/alphaMap 变化时置
+  // material.needsUpdate，不重编译就等于 alphaMap 未生效 —— 地面会变成一块不透边的实心圆盘）
+  if (!alphaTexture) return null;
+
   return (
     <>
       {enableReflection && vehicleRoot ? <VehicleReflection source={vehicleRoot} /> : null}

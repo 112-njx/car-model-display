@@ -69,6 +69,9 @@ function createGridTexture(segments) {
 export function TechGrid({ segments = GRID_SEGMENTS }) {
   const texture = useCanvasTexture(() => createGridTexture(segments), [segments]);
 
+  // 纹理就绪前不渲染（理由同 ContactShadow.jsx：R3F 不会在 map 变化时置 material.needsUpdate）
+  if (!texture) return null;
+
   return (
     <mesh name="cd-env-grid" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]} renderOrder={1}>
       <circleGeometry args={[GRID_RADIUS, GRID_SEGMENTS]} />

@@ -61,6 +61,9 @@ export function SweepLight({ opacity = 0.15, speed = RADIANS_PER_SECOND }) {
     if (group.current) group.current.rotation.y += delta * speed;
   });
 
+  // 纹理就绪前不渲染（理由同 ContactShadow.jsx：R3F 不会在 map 变化时置 material.needsUpdate）
+  if (!texture) return null;
+
   return (
     <group ref={group}>
       <mesh

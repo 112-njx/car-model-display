@@ -45,6 +45,12 @@ function createBlobTexture() {
 export function ContactShadow({ size = [7.6, 3.5], opacity = 0.72 }) {
   const texture = useCanvasTexture(createBlobTexture, []);
 
+  // 纹理就绪前不渲染：three 的 USE_MAP 是编译期 define，`map` 由 null 变为 Texture 时
+  // 必须置 material.needsUpdate 才会重编译着色器，而 R3F 的 applyProps 不会自动置该位
+  // —— 否则材质会带着「无贴图」的旧程序一直渲染，表现为一块硬边纯色矩形。
+  // 因此让材质**出生时就带 map**。详见 docs/debug.md 的 T8 集成记录。
+  if (!texture) return null;
+
   return (
     <mesh name="cd-env-contact-shadow" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} renderOrder={2}>
       <planeGeometry args={size} />
