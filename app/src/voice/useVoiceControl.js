@@ -16,6 +16,7 @@ import { carStore } from "../state/useCarStore.js";
 import { buildVocabulary } from "./commands.js";
 import { detectSupport, setRecognitionCtor } from "./recognition.js";
 import { cancelSpeech, speak } from "./synthesis.js";
+import { STRINGS } from "../components/ui/strings.js";
 import { createSnapshot, createVoiceController } from "./voiceController.js";
 
 /**
@@ -54,8 +55,35 @@ function syncVoiceState(snapshot) {
   store.setVoiceSupported(snapshot.supported);
 }
 
-/** 语音回执 toast 文案：与点击通道的措辞保持一致（「已执行：…」）。 */
-export function voiceToastText(reply) {
+/**
+ * 语音回执 toast 文案。
+ *
+ * T8 集成期对齐（人工裁定）：**三条通道的 Toast 文案必须完全一致**（T4《挂载说明》§3 的要求）。
+ * 做法：优先按动作计划查 `ui/strings.js` 的模板——与 UI 按钮 / 3D 点击两条通道用的是**同一张表**；
+ * 计划为空或形态超出模板覆盖范围（如复合指令、多动作）时，回退到本模块的中文回执 `已执行：<回执>`。
+ *
+ * 与 `describeActions` 的区别：`reply` 是**语音播报/字幕**用的自然语言回执（保留「已执行：」前缀更有语音味），
+ * 而 Toast 是**与另外两条通道共用的反馈面**，故按模板统一。
+ */
+export function voiceToastText(reply, actions) {
+  const plan = Array.isArray(actions) ? actions : [];
+  const one = plan.length === 1 ? plan[0] : null;
+  if (one) {
+    if (one.type === "part") {
+      const label = PARTS.find((part) => part.id === one.id)?.label;
+      if (label) return one.open ? STRINGS.toast.partOpened(label) : STRINGS.toast.partClosed(label);
+    } else if (one.type === "light") {
+      const label = LIGHTS.find((light) => light.id === one.id)?.label;
+      if (label) return one.on ? STRINGS.toast.lightOn(label) : STRINGS.toast.lightOff(label);
+    } else if (one.type === "group") {
+      const label = PART_GROUPS.find((group) => group.id === one.id)?.label;
+      if (label) return one.open ? STRINGS.toast.groupOpened(label) : STRINGS.toast.groupClosed(label);
+    } else if (one.type === "camera") {
+      if (one.command === "orbit-once") return STRINGS.toast.orbitOnce;
+      const label = CAMERA_VIEWS.find((view) => view.id === one.view)?.label;
+      if (label) return STRINGS.toast.cameraView(label);
+    }
+  }
   return reply ? `已执行：${reply}` : "";
 }
 
@@ -133,7 +161,7 @@ export function useVoiceControl(options = {}) {
         if (next.resultSeq !== lastResultSeq.current) {
           lastResultSeq.current = next.resultSeq;
           const push = optionsRef.current.onToast || ((text, level) => carStore.getState().pushToast(text, level));
-          if (next.reply) push(voiceToastText(next.reply), "success");
+          if (next.reply) push(voiceToastText(next.reply, next.actions), "success");
           else if (next.hint) push(next.hint, "warn");
         }
       },

@@ -25,20 +25,26 @@ import { useDeviceTier } from "../../perf/useDeviceTier";
 export function StudioCanvas() {
   const { dprMax, shadow, features } = useDeviceTier();
 
-  const createRenderer = async (props) => {
-    const options = { ...props, antialias: true, preserveDrawingBuffer: true, powerPreference: "high-performance" };
-    let renderer;
-    if (navigator.gpu) {
-      try {
-        const { WebGPURenderer } = await import("three/webgpu");
-        renderer = new WebGPURenderer(options);
-        await renderer.init();
-      } catch {
-        renderer = new WebGLRenderer(options);
-      }
-    } else {
-      renderer = new WebGLRenderer(options);
-    }
+  // ── T8 集成期决策（人工裁定）：**强制 WebGL**，去掉 WebGPU 优先分支 ──
+  //
+  // 实测依据（详见 docs/debug.md 记录 T8-03 / 人工配置区 #27）：
+  //   · 同一套 `verify-parts` 78 项：**WebGPU 68 PASS / 10 FAIL**（12 条未捕获异常
+  //     `TypeError: Invalid value used as weak map key`，栈落在 three 的 `WebGPURenderer`
+  //     → `Textures.updateTexture` → `WeakMap.set`）；**WebGL 74 PASS / 4 FAIL，异常 0 条**。
+  //   · 该异常抛在渲染调用内部，会**打死 R3F 的帧循环**，表现为部件动画卡在中途、整页失响应
+  //     （T1/T4/T7 三方独立复现，且未改动的基线上同样出现 ⇒ 非本项目引入，属 three WebGPU 后端既有问题）。
+  //   · 录屏与手机演示对"画面突然卡死"的容忍度为零，故以稳定性优先。
+  //
+  // 代价与边界：放弃 WebGPU 的性能上限。`navigator.gpu` 存在但 WebGL 不可用的设备
+  // （实践上不存在）会落到 T8p 的降级页——`graphicsSupport` 的判定条件是"WebGL 与 WebGPU 都不可用"，
+  // 保持原样即可覆盖该情形。
+  const createRenderer = (props) => {
+    const renderer = new WebGLRenderer({
+      ...props,
+      antialias: true,
+      preserveDrawingBuffer: true,
+      powerPreference: "high-performance",
+    });
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;

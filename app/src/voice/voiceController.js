@@ -34,6 +34,7 @@ export function createSnapshot() {
     error: "",
     transcript: "", // 实时字幕（未定稿）
     reply: "", // 最近一条指令的中文回执
+    actions: [], // 最近一条**成功执行**的动作计划（T8 增补：接线层据此把 Toast 文案对齐到 ui/strings.js）
     hint: "", // 纠错提示
     permission: "unknown",
     speechEnabled: false,
@@ -126,6 +127,7 @@ export function createVoiceController(options = {}) {
       emit({
         transcript,
         reply: "",
+        actions: [],
         hint: detailed.hint || "",
         resultSeq: snapshot.resultSeq + 1,
       });
@@ -138,6 +140,9 @@ export function createVoiceController(options = {}) {
     emit({
       transcript,
       reply,
+      // T8 增补：把动作计划一并带给接线层，供其把 Toast 文案对齐到 ui/strings.js
+      // （只影响文案，不影响执行行为；`useVoiceControl` 未使用时该字段被忽略）
+      actions: detailed.actions,
       hint: "",
       error: "",
       lastCommand: transcript,
