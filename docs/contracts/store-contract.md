@@ -333,7 +333,8 @@ T2 只提供 `installVoiceInject(inject)` 助手与上述约定，**刻意不提
 | `npm run build` | ✅ 628 modules，5.70s（T1 基线 625 + T2 新增 3 个模块），无新增告警 |
 | `npm run dev`（端口 5174，5173 被他人实例占用） | ✅ 就绪；`carConfig.js` / `useCarStore.js` / `useStudioStore.js` / `auditHooks.js` / `VehicleModel.jsx` 经 dev 转换管线全部 HTTP 200 |
 | 契约层断言（Node + Vite `ssrLoadModule` 加载真实模块） | ✅ **111 项断言全部通过**：config 形状与实测节点名、store 初值与 18 个 action、10 部件 + 2 灯光驱动、分组开关、`closeAll`、未知 id 拒绝、相机与 `orbitOnce` token 自增、toast、`bumpInteraction`、语音系列、3 个派生函数、shim 双向映射与旧字段齐备、审计三钩子结构与注册/注销/深合并/抛错隔离 |
-| 浏览器 CDP 实测（部件动画、灯光发光、相机位移） | ⛔ **未完成**：无头 Edge 启动被 worktree 隔离守卫拦截，已登记 `debug.md` 人工配置区 |
+| 旧 UI 经 shim 的 SSR 烟测 | ✅ 7 个旧 UI 组件（`ControlDeck`/`CameraControls`/`HeroCopy`/`InfoDialog`/`Navigation`/`InitialLoadingScreen`/`VehicleSelector`）全部渲染成功；6 个场景组件模块静态加载 OK。注：zustand v5 服务端快照取 `getInitialState()`，SSR **不能**用于验证驱动后的响应性 |
+| 浏览器 CDP 实测（部件动画、灯光发光、相机位移） | ⛔ **未完成**：无头 Edge 启动被 worktree 隔离守卫拦截，已登记 `debug.md` 人工配置区 #5 |
 
 ---
 
