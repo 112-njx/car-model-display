@@ -1,0 +1,124 @@
+/**
+ * perf.css —— T8p 独占样式（类名前缀 cd-perf-，对齐 §12.1 命名隔离）
+ *
+ * 只服务 WebGLFallback 降级页。**不改 style.css / tokens.css**——那两个文件是 T4 的独占范围
+ * （§12.2）。这里只**读** tokens.css 的 CSS 变量，并且每个 var() 都带兜底值：
+ * 降级页恰恰出现在环境异常时，不能假设样式表一定加载成功。
+ */
+
+.cd-perf-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 400);
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg, 1.5rem);
+  overflow: auto;
+  background:
+    radial-gradient(120% 90% at 50% -10%, oklch(26% 0.03 250 / 0.55), transparent 62%),
+    linear-gradient(180deg, var(--color-paper-2, #1b1a18), var(--color-paper, #121110));
+  color: var(--color-ink, #f2f0ec);
+  font-family: var(--font-body, ui-sans-serif, system-ui, sans-serif);
+  font-size: var(--text-base, 1rem);
+  line-height: 1.65;
+  text-align: left;
+}
+
+.cd-perf-fallback__card {
+  width: min(34rem, 100%);
+  padding: clamp(1.5rem, 4vw, 2.75rem);
+  border: 1px solid var(--color-rule, oklch(88% 0.018 80 / 0.22));
+  border-radius: var(--radius-lg, 1.25rem);
+  background: var(--glass-surface, linear-gradient(145deg, oklch(30% 0.02 250 / 0.5), oklch(16% 0.014 60 / 0.72)));
+  box-shadow: var(--glass-shadow, 0 1.25rem 3.5rem oklch(5% 0.01 60 / 0.48));
+  backdrop-filter: var(--glass-filter, blur(20px) saturate(160%));
+}
+
+.cd-perf-fallback__kicker {
+  margin: 0 0 var(--space-xs, 0.5rem);
+  color: var(--color-muted, oklch(77% 0.01 70));
+  font-size: var(--text-xs, 0.64rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.cd-perf-fallback__title {
+  margin: 0 0 var(--space-sm, 0.75rem);
+  font-family: var(--font-display, ui-serif, serif);
+  font-size: clamp(1.6rem, 1.1rem + 2.2vw, 2.4rem);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-ink, #f2f0ec);
+}
+
+.cd-perf-fallback__lead {
+  margin: 0 0 var(--space-lg, 1.5rem);
+  color: var(--color-ink-soft, oklch(88% 0.01 70));
+}
+
+.cd-perf-fallback__list {
+  margin: 0 0 var(--space-lg, 1.5rem);
+  padding-left: 1.15em;
+  color: var(--color-ink-soft, oklch(88% 0.01 70));
+}
+
+.cd-perf-fallback__list li + li {
+  margin-top: var(--space-2xs, 0.25rem);
+}
+
+.cd-perf-fallback__retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 var(--space-lg, 1.5rem);
+  border: 1px solid var(--color-rule, oklch(88% 0.018 80 / 0.22));
+  border-radius: var(--radius-pill, 999px);
+  background: var(--color-accent, oklch(88% 0.055 85));
+  color: var(--color-accent-ink, oklch(18% 0.022 65));
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter var(--dur-short, 0.2s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.cd-perf-fallback__retry:hover {
+  filter: brightness(1.08);
+}
+
+.cd-perf-fallback__retry:focus-visible {
+  outline: 2px solid var(--color-focus, oklch(92% 0.05 85));
+  outline-offset: 3px;
+}
+
+.cd-perf-fallback__details {
+  margin-top: var(--space-lg, 1.5rem);
+  color: var(--color-muted, oklch(77% 0.01 70));
+  font-size: var(--text-sm, 0.8rem);
+}
+
+.cd-perf-fallback__details summary {
+  cursor: pointer;
+}
+
+.cd-perf-fallback__details code {
+  font-family: var(--font-outlier, ui-monospace, monospace);
+  word-break: break-all;
+}
+
+/* 窄屏（含 375px 手机视口）：收紧内边距，按钮占满宽度更好点按 */
+@media (max-width: 26rem) {
+  .cd-perf-fallback__card {
+    padding: var(--space-lg, 1.5rem) var(--space-md, 1rem);
+  }
+
+  .cd-perf-fallback__retry {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cd-perf-fallback__retry {
+    transition-duration: 0ms;
+  }
+}
