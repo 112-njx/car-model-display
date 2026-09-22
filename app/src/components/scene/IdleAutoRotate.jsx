@@ -238,6 +238,8 @@ export function IdleAutoRotate({
     apiRef.current = {
       notifyInteraction,
       startOrbit,
+      // 指针是否按下中（CameraRig 的"重复下发预设"兜底要据此避开拖拽期间）
+      isPointerActive: () => pointerActiveRef.current,
       // DEV 诊断：自测脚本据此判断"模式已切但帧循环未推进"这类状态
       debug: () => ({
         mode: modeRef.current,
