@@ -266,6 +266,35 @@
   3. `verify-voice` 全部 SKIP 待 T6 合并后重跑；`verify-pick` 待 T5；`verify-camera` 集成层待 T7。
   4. 人工配置区 #7 已**实际生效**（9222 上无头 Edge 存活，CDP 可连），无需负责人再操作；若该实例被关闭需重启。
 
+### 记录 T9-04 · 2026-09-22 · 已知偏差机制落地 + 产出 qa-report.md（R0 轮）
+
+- **轮次目标**：执行负责人对人工配置区 #10 的裁定（**选 ②**：WebGPU 控制台噪声按「已知偏差」记录、不计入全绿判据），并把 R0 轮结果落成 S3 交付物 `docs/qa-report.md`。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `scripts/lib/cdp.mjs` | 新增 `KNOWN_DEVIATIONS` 登记表 + `matchKnownDeviation()` + `classifyRuntimeNoise()`；reporter 新增 `known()` 与 `[KNOWN]` 计数/明细 |
+  | `scripts/verify-parts.mjs` | 异常断言改为「已知偏差分离、其余仍 FAIL」 |
+  | `docs/qa-report.md` | **新增**（S3 交付物）：R0 轮记录 + 已知偏差 + issue 清单 + 回归记录 + S3 放行结论 |
+  | `docs/debug.md` | 本记录 + 人工配置区 #10 结案 |
+- **关键决策 / 问题**：
+  1. **裁定 ② 的实现方式（本记录最重要的一点）**：**没有**用「忽略异常」这类写法，那等于偷偷放宽断言。落地为**四条纪律**，写在 `KNOWN_DEVIATIONS` 顶部：
+     - **窄匹配**：`match` 必须**同时**命中 `Invalid value used as weak map key` 与 `three_webgpu` 两个特征串，不写通配；
+     - **显式标注**：命中的条目以 `[KNOWN]` **单独打印并单独计数，不并入 PASS**，任何时候都看得见；
+     - **不遮蔽回归**：只有窄匹配命中的文本被放行，**同一断言下任何其它异常仍然 FAIL**；
+     - **可撤销**：条目里写明 `revokeWhen`（T8 修好渲染期回退、或升级 three 后应删除该条目、恢复 FAIL 口径）。
+  2. **归并去重**：同类偏差按 id 归并为**一行 + 次数**（首次实测 12 条异常刷了 12 行，太吵），避免噪声淹没真正的 FAIL。
+  3. **`--strict` 语义确认**：`verify-parts` 在契约基座上带 `--strict` 仍退出 1，但原因是 **T5 未集成的 SKIP 计入失败**，**不是** WebGPU 那条 —— 这正是设计意图（Wave 2 验收要求 SKIP=0，集成收口后才可能）。R0 不加 `--strict`，以区分「脚本能不能跑」与「功能齐不齐」。
+  4. **R0 的定位**：跑在 `contract-v1`（契约基座）而**非** T8 集成分支，因此**不是 S3 验收轮**；它的价值是闭合 Wave 1「四脚本从未真跑」这一未知风险。`qa-report.md` 里已明确标注这一点，避免被误读为验收通过。
+- **自测结果**：
+  - `node --check`：`cdp.mjs` / `verify-parts.mjs` 语法通过。
+  - **登记表安全性自测（5+1 项全过）**：已登记的 three/webgpu 噪声 → 命中；换一个未登记异常 → **不命中**；碰巧含 `weak map key` 但非 `three_webgpu` → 不命中；碰巧含 `three_webgpu` 但非该错误 → 不命中；空串 → 不命中；归并：同类 2 条只登记 1 行、未命中项原样留在 `unknown`。**证得「未登记异常仍会被判 FAIL，回归不被遮蔽」。**
+  - `verify-parts` 实跑 3 次（5190，契约基座）：`PASS 77 / FAIL 0 / SKIP 1`，KNOWN 在 0 与 1 之间抖动（对应页面异常 0 或 12 条），**退出码 0**（非 strict）；有异常的那两次均正确归并为 1 行 `[KNOWN]`。
+- **commit**：见本轮提交（`KNOWN_DEVIATIONS` 机制 + `qa-report.md` + 本记录）
+- **遗留项**：
+  1. **S3 未达成**：集成层 SKIP 待 T5/T6/T7/T8p 合并后清零，且**必须在 T8 集成分支上重跑**（当前跑的是契约基座）。
+  2. A/B/C 三组人工验收尚未执行；B 组需真机与时间窗，B11 真机语音另需 T10b 的 https URL。
+  3. T3 经负责人确认**仍在运行、尚未交付**，§12.4 第 3 步第一条合并待其交付。
+
 ---
 
 ## 需要项目人工配置的地方
@@ -283,4 +312,4 @@
 | 7 | 无头浏览器 CDP 自测放行 | worktree 隔离守卫拒绝执行工作目录外的 `msedge.exe`。启动命令：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9222 --user-data-dir=%TEMP%\car-display-edge --no-first-run --no-default-browser-check --window-size=1440,900 about:blank`（脚本会依次探测 9222/9333/12319）。 | **已解决**（9222 上 Edge 153 无头实例存活，T9-03 已实测连通；若被关闭需重启） |
 | 8 | **T8 集成实例请按分配表用 5191** | 滚动验收要求 T9 能 `--base-url` 连到「T8 集成分支的最新代码」且**能确证实例身份**。请 T8 在集成分支的 `app/` 下用 `npm run dev -- --port 5191 --strictPort`，不要用 5173/5174/5181（前者属 T1 手机联调，后两者是他人实例）。 | 待处理（需 T8 遵守） |
 | 9 | **手机真机验收时间** | 需负责人安排手机 Chrome + 同一 Wi-Fi（开发机 WLAN `10.14.6.9`），按 `docs/qa-checklist.md` §3.2 的 B1–B13 逐项勾选。**AI 无法代做**，且我不会替你勾选。其中 B11 真机语音有硬性前提（Web Speech API 需安全上下文），须等 T10b 的 https URL，届时按「阻塞（待 https）」记录。 | 待处理（需约定时间窗） |
-| 10 | **WebGPU 控制台噪声的断言裁定** | `verify-parts` 的「运行期无未捕获异常」断言因基线既有问题失败（P2，已归因结案：画面稳定、功能零影响，详见 T9-03）。**我不自行放宽断言凑绿**。请二选一：① 由 T8 修（让 `StudioCanvas` 的渲染期异常也能回退到 WebGL）；② 明确裁定该条按「已知偏差」记录、不计入脚本全绿判据。 | 待处理（阻塞「四脚本全绿」的字面达成） |
+| 10 | WebGPU 控制台噪声的断言裁定 | `verify-parts` 的「运行期无未捕获异常」断言因基线既有问题失败（P2，已归因结案：画面稳定、功能零影响，详见 T9-03）。负责人 2026-09-22 裁定**选 ②**：按「已知偏差」记录、不计入全绿判据。已落地为 `scripts/lib/cdp.mjs` 的 `KNOWN_DEVIATIONS` 登记表（窄匹配 + `[KNOWN]` 单独计数 + 未登记异常仍 FAIL），详见记录 T9-04。 | **已解决（按已知偏差放行）** |

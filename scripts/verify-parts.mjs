@@ -25,6 +25,7 @@ import {
   run,
   delay,
   waitForHooks,
+  classifyRuntimeNoise,
 } from "./lib/cdp.mjs";
 
 const TERMINAL_TOLERANCE = 0.01;
@@ -261,10 +262,17 @@ await run("verify-parts", async ({ session, reporter }) => {
   );
 
   // ── 8. 页面运行期异常 ────────────────────────────────────────────────────
+  // 经负责人裁定的已知偏差（见 scripts/lib/cdp.mjs 的 KNOWN_DEVIATIONS）单独标注，不并入 PASS；
+  // 其余任何异常仍然 FAIL —— 本断言**只**对登记在册的窄特征放行，不遮蔽回归。
+  const { known: knownExceptions, unknown: unknownExceptions } = classifyRuntimeNoise(
+    reporter,
+    session.events.exceptions,
+  );
   reporter.check(
-    "运行期无未捕获异常 / console.error",
-    session.events.exceptions.length === 0 && session.events.consoleErrors.length === 0,
-    `exceptions=${JSON.stringify(session.events.exceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}`,
+    "运行期无非已知偏差的未捕获异常 / console.error",
+    unknownExceptions.length === 0 && session.events.consoleErrors.length === 0,
+    `非已知偏差异常=${JSON.stringify(unknownExceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}` +
+      (knownExceptions.length ? `（另有 ${knownExceptions.length} 条已裁定偏差，见 KNOWN 明细）` : ""),
   );
 
   return { transitions, pageEvents: session.events };

@@ -470,7 +470,70 @@ export async function resetToBaseline(session) {
 // 断言器
 // ───────────────────────────────────────────────────────────────────────────
 
-const MARK = { pass: "[PASS]", fail: "[FAIL]", skip: "[SKIP]", info: "[INFO]" };
+const MARK = { pass: "[PASS]", fail: "[FAIL]", skip: "[SKIP]", known: "[KNOWN]", info: "[INFO]" };
+
+// ───────────────────────────────────────────────────────────────────────────
+// 已知偏差登记表
+// ───────────────────────────────────────────────────────────────────────────
+/**
+ * 经项目负责人**明确裁定**为「已知偏差」、不计入脚本全绿判据的页面噪声。
+ *
+ * 纪律（避免变成偷偷放宽断言）：
+ * 1. **窄匹配**：`match` 必须同时命中精确的特征串，绝不写「忽略所有异常」这类通配。
+ * 2. **显式标注**：命中的条目以 `[KNOWN]` 单独打印并计入汇总，**不并入 PASS**，任何时候都能看见。
+ * 3. **不遮蔽回归**：只有 `match` 命中的文本被放行；同一断言下**任何其它异常仍然 FAIL**。
+ * 4. **可撤销**：`revokeWhen` 写明何时应删除本条目、恢复为 FAIL。
+ */
+export const KNOWN_DEVIATIONS = [
+  {
+    id: "webgpu-weakmap-texture",
+    reason: "three/webgpu 渲染期异常（FormDrive 基线既有；实测画面稳定、功能零影响）",
+    match: (text) => text.includes("Invalid value used as weak map key") && text.includes("three_webgpu"),
+    attribution:
+      "FormDrive 基线 `StudioCanvas.jsx` 的 `createRenderer` 只对 `await renderer.init()` 加了 try/catch，" +
+      "渲染期异常捕不到；`three/webgpu` 的 `Textures.updateTexture → Bindings._init` 对未定义的纹理源做 `WeakMap.set`。",
+    evidence:
+      "① 裸 WebGPU API 在同一无头 Edge 上渲染离屏纹理并读回成功（firstPixelBGRA=[229,153,51,255]，uncapturedErrors=[]）→ 浏览器 WebGPU 正常；" +
+      "② `Page.captureScreenshot` 裁 3D 画布区域 = 有画面（252 色 / stdDev 43.3）；" +
+      "③ 连拍 6 帧亮度均值极差 0.00 → 画面稳定，无闪烁/缺件。",
+    ruling: "项目负责人 2026-09-22 裁定按「已知偏差」记录，不计入全绿判据（docs/debug.md 记录 T9-03、人工配置区 #10）。",
+    revokeWhen: "T8 让渲染期异常也能回退到 WebGL，或升级 three 后 —— 届时删除本条目，该断言恢复为 FAIL。",
+  },
+];
+
+/** 文本是否命中某条已知偏差；命中返回该条目，否则返回 null。 */
+export function matchKnownDeviation(text) {
+  if (typeof text !== "string") return null;
+  return KNOWN_DEVIATIONS.find((deviation) => deviation.match(text)) ?? null;
+}
+
+/**
+ * 把一批页面噪声按已知偏差条目归并后登记（同类只打印一行 + 次数，避免逐条刷屏）。
+ * @returns {{ known: string[], unknown: string[] }} 命中偏差的文本与未命中的文本
+ */
+export function classifyRuntimeNoise(reporter, texts, label = "运行期异常") {
+  const known = [];
+  const unknown = [];
+  const grouped = new Map();
+  for (const text of texts) {
+    const deviation = matchKnownDeviation(text);
+    if (!deviation) {
+      unknown.push(text);
+      continue;
+    }
+    known.push(text);
+    const entry = grouped.get(deviation.id) ?? { deviation, count: 0, sample: String(text).split("\n")[0] };
+    entry.count += 1;
+    grouped.set(deviation.id, entry);
+  }
+  for (const { deviation, count, sample } of grouped.values()) {
+    reporter.known(
+      `${label}·已知偏差（${deviation.id}）`,
+      `${deviation.reason}｜${count} 次｜实得：${sample}`,
+    );
+  }
+  return { known, unknown };
+}
 
 /**
  * 极简断言器：收集 PASS / FAIL / SKIP，末尾打印汇总并决定退出码。
@@ -504,6 +567,13 @@ export function createReporter({ title, strict = false } = {}) {
     skip(name, reason) {
       record("skip", name, reason);
     },
+    /**
+     * 命中已知偏差登记表的噪声：单独标注、单独计数，**不并入 PASS**，也不计入失败。
+     * 用途见 `KNOWN_DEVIATIONS` 顶部的纪律说明。
+     */
+    known(name, detail) {
+      record("known", name, detail);
+    },
     /** condition 为真 → PASS；否则 FAIL。detail 建议写成「期望 X，实得 Y」。 */
     check(name, condition, detail) {
       if (condition) record("pass", name, detail);
@@ -535,7 +605,7 @@ export function createReporter({ title, strict = false } = {}) {
     get counts() {
       return results.reduce(
         (accumulator, item) => ({ ...accumulator, [item.status]: (accumulator[item.status] ?? 0) + 1 }),
-        { pass: 0, fail: 0, skip: 0 },
+        { pass: 0, fail: 0, skip: 0, known: 0 },
       );
     },
     get results() {
@@ -549,12 +619,18 @@ export function createReporter({ title, strict = false } = {}) {
       console.log("");
       console.log(`── ${title} 汇总 ──────────────────────────────`);
       console.log(
-        `合计 ${results.length} 项：PASS ${counts.pass} / FAIL ${counts.fail} / SKIP ${counts.skip}　用时 ${elapsed}s` +
+        `合计 ${results.length} 项：PASS ${counts.pass} / FAIL ${counts.fail} / SKIP ${counts.skip} / KNOWN ${counts.known}　用时 ${elapsed}s` +
           (strict ? "　（--strict：SKIP 计入失败）" : ""),
       );
       if (counts.skip > 0) {
         console.log("SKIP 明细：");
         for (const item of results.filter((entry) => entry.status === "skip")) {
+          console.log(`  · ${item.name} —— ${item.detail}`);
+        }
+      }
+      if (counts.known > 0) {
+        console.log("KNOWN 明细（经负责人裁定的已知偏差，不计入失败；条目定义见 scripts/lib/cdp.mjs 的 KNOWN_DEVIATIONS）：");
+        for (const item of results.filter((entry) => entry.status === "known")) {
           console.log(`  · ${item.name} —— ${item.detail}`);
         }
       }
