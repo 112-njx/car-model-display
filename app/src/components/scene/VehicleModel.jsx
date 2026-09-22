@@ -1,9 +1,37 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import { Box3, Color, Euler, MathUtils, Matrix4, Vector3 } from "three";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { Box3, Color, Euler, MathUtils, Matrix4, Raycaster, Vector3 } from "three";
 import { PAINTS, VEHICLES, WHEELS } from "../../config/studioConfig";
 import { useStudioStore } from "../../state/useStudioStore";
 import { useVehicleGLTF } from "../../hooks/useVehicleGLTF";
+import { PartHitAreas, PartHoverHighlight, usePartHitAreas } from "../../interaction/PartHitAreas";
+import { usePartPick } from "../../interaction/usePartPick";
+import { computeHitTargets } from "../../interaction/partMapping";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * A 段占位块（契约无关阶段自测用）—— B 段接线时整块删除。
+ * 说明：id / label / group 直接抄 §13.1 的冻结值；pivotKey 只用来把契约 id 对到
+ * T1 基线 studioConfig 里已经解析好的 pivot，因此本文件不出现任何 GLB 节点名。
+ * 阈值同样是 §13.1 INTERACTION 的冻结值，B 段改为读 carConfig.INTERACTION。
+ * ──────────────────────────────────────────────────────────────────────────── */
+const A_SECTION_PARTS = [
+  { id: "window_lf", group: "windows", label: "左前车窗", pivotKey: "leftWindow" },
+  { id: "window_rf", group: "windows", label: "右前车窗", pivotKey: "rightWindow" },
+  { id: "window_lr", group: "windows", label: "左后车窗", pivotKey: "rearLeftWindow" },
+  { id: "window_rr", group: "windows", label: "右后车窗", pivotKey: "rearRightWindow" },
+  { id: "door_lf", group: "doors", label: "左前门", pivotKey: "leftDoor" },
+  { id: "door_rf", group: "doors", label: "右前门", pivotKey: "rightDoor" },
+  { id: "door_lr", group: "doors", label: "左后门", pivotKey: "rearLeftDoor" },
+  { id: "door_rr", group: "doors", label: "右后门", pivotKey: "rearRightDoor" },
+  { id: "frunk", group: "closures", label: "前备箱", pivotKey: "hood" },
+  { id: "trunk", group: "closures", label: "后备箱", pivotKey: "trunk" },
+];
+const A_SECTION_LIGHTS = [
+  { id: "headlight", label: "大灯" },
+  { id: "taillight", label: "尾灯" },
+];
+const A_SECTION_INTERACTION = { tapMaxMovePx: 6, tapMaxDurationMs: 300, hitPaddingRatio: 0.02, hoverHighlight: true };
+const A_SECTION_LEGACY_ID = Object.fromEntries(A_SECTION_PARTS.map((part) => [part.pivotKey, part.id]));
 
 function lowestCommonAncestor(objects) {
   if (!objects.length) return null;
@@ -82,6 +110,8 @@ function VehicleModelInstance({ vehicleId }) {
   const group = useRef();
   const headlightLevel = useRef(0);
   const tailLightLevel = useRef(0);
+  const camera = useThree((store) => store.camera);
+  const gl = useThree((store) => store.gl);
 
   useEffect(() => {
     let finalFrame;
@@ -107,6 +137,8 @@ function VehicleModelInstance({ vehicleId }) {
     const scene = source.scene.clone(true);
     const collections = { paint: new Set(), rims: new Set(), lights: new Set(), tailLights: new Set() };
     const lightObjects = new Set();
+    // T5: 灯光命中目标需要"按灯分组"的 mesh 集合（材质名匹配，与 collections 同源）
+    const lightMeshSets = { headlight: new Set(), taillight: new Set() };
     scene.traverse((object) => {
       if (!object.isMesh) return;
       object.castShadow = true;
@@ -120,8 +152,8 @@ function VehicleModelInstance({ vehicleId }) {
         material.envMapIntensity = 2.45;
         if (matchesAny(name, config.paintNames)) collections.paint.add(material);
         if (matchesAny(name, config.rimNames)) collections.rims.add(material);
-        if (matchesAny(name, config.lightNames)) { collections.lights.add(material); lightObjects.add(object); }
-        if (matchesAny(name, config.tailLightNames)) collections.tailLights.add(material);
+        if (matchesAny(name, config.lightNames)) { collections.lights.add(material); lightObjects.add(object); lightMeshSets.headlight.add(object); }
+        if (matchesAny(name, config.tailLightNames)) { collections.tailLights.add(material); lightMeshSets.taillight.add(object); }
       });
     });
 
@@ -198,6 +230,7 @@ function VehicleModelInstance({ vehicleId }) {
       headlightBounds: { min: headlightBounds.min.toArray(), max: headlightBounds.max.toArray() },
       headlightAnchors,
       materials: Object.fromEntries(Object.entries(collections).map(([key, value]) => [key, [...value]])),
+      lightMeshes: Object.fromEntries(Object.entries(lightMeshSets).map(([key, value]) => [key, [...value]])),
     };
   }, [source.scene, config]);
 
@@ -208,6 +241,58 @@ function VehicleModelInstance({ vehicleId }) {
       if (globalThis.__formdriveHeadlightAnchors === runtimeAnchors) delete globalThis.__formdriveHeadlightAnchors;
     };
   }, [model.headlightAnchors, vehicleId]);
+
+  /* ── T5 A 段占位接线（B 段替换为 carConfig.PARTS + useCarStore） ── */
+  const hitParts = useMemo(() => A_SECTION_PARTS.map((part) => ({
+    id: part.id,
+    group: part.group,
+    label: part.label,
+    pivot: model.pivots[part.pivotKey],
+  })), [model]);
+  const hitLights = useMemo(() => A_SECTION_LIGHTS.map((light) => ({
+    id: light.id,
+    label: light.label,
+    meshes: model.lightMeshes[light.id] ?? [],
+  })), [model]);
+  const hitAreas = usePartHitAreas({
+    scene: model.scene,
+    parts: hitParts,
+    lights: hitLights,
+    interaction: A_SECTION_INTERACTION,
+  });
+  const [aSectionOpen, setASectionOpen] = useState({});
+  const [aSectionLights, setASectionLights] = useState({ headlight: true, taillight: true });
+  const handlePick = useCallback((id) => {
+    if (id === "headlight" || id === "taillight") {
+      setASectionLights((previous) => ({ ...previous, [id]: !previous[id] }));
+      // A 段占位：让仍读旧 store 的 HeadlightRig 跟着变，保证自测画面自洽；B 段删除
+      if (id === "headlight") useStudioStore.getState().toggleHeadlights();
+      if (id === "taillight") useStudioStore.getState().toggleTailLights();
+      return;
+    }
+    setASectionOpen((previous) => ({ ...previous, [id]: !previous[id] }));
+  }, []);
+  const pick = usePartPick({ hitAreas, interaction: A_SECTION_INTERACTION, onPick: handlePick });
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
+    const auditRaycaster = new Raycaster();
+    const viewport = () => {
+      const rect = gl.domElement.getBoundingClientRect();
+      return { width: rect.width || 1, height: rect.height || 1, left: rect.left, top: rect.top };
+    };
+    const hitTargets = () => computeHitTargets({ hitAreas, camera, viewport: viewport(), raycaster: auditRaycaster });
+    const pickAt = (x, y) => pick.pickAt(x, y)?.id ?? null;
+    const pickState = () => ({ open: { ...aSectionOpen }, lights: { ...aSectionLights } });
+    globalThis.__carDisplayHitTargets = hitTargets;
+    globalThis.__carDisplayPickAt = pickAt;
+    globalThis.__carDisplayPickState = pickState;
+    return () => {
+      if (globalThis.__carDisplayHitTargets === hitTargets) delete globalThis.__carDisplayHitTargets;
+      if (globalThis.__carDisplayPickAt === pickAt) delete globalThis.__carDisplayPickAt;
+      if (globalThis.__carDisplayPickState === pickState) delete globalThis.__carDisplayPickState;
+    };
+  }, [aSectionLights, aSectionOpen, camera, gl, hitAreas, pick]);
 
   useEffect(() => {
     const paint = PAINTS[state.paint];
@@ -284,16 +369,23 @@ function VehicleModelInstance({ vehicleId }) {
       material.color.set(livePaint.color);
       material.metalness = Math.min(livePaint.metalness, 0.55);
     });
-    headlightLevel.current = MathUtils.damp(headlightLevel.current, state.headlights ? 1 : 0, state.headlights ? 6.2 : 10.5, delta);
-    tailLightLevel.current = MathUtils.damp(tailLightLevel.current, state.tailLights ? 1 : 0, state.tailLights ? 7.2 : 11.5, delta);
+    headlightLevel.current = MathUtils.damp(headlightLevel.current, aSectionLights.headlight ? 1 : 0, aSectionLights.headlight ? 6.2 : 10.5, delta);
+    tailLightLevel.current = MathUtils.damp(tailLightLevel.current, aSectionLights.taillight ? 1 : 0, aSectionLights.taillight ? 7.2 : 11.5, delta);
     const headlightGlow = MathUtils.smootherstep(headlightLevel.current, 0, 1);
     const tailLightGlow = MathUtils.smootherstep(tailLightLevel.current, 0, 1);
-    model.materials.lights.forEach((material) => { material.emissiveIntensity = headlightGlow * 2.7; });
-    model.materials.tailLights.forEach((material) => { material.emissiveIntensity = tailLightGlow * 3.2; });
+    // T5: 灯光材质的 emissiveIntensity 由本帧循环驱动，悬停高亮需要给它一个下限才看得见
+    const hovered = pick.hoveredRef.current;
+    model.materials.lights.forEach((material) => {
+      material.emissiveIntensity = Math.max(headlightGlow * 2.7, hovered === "headlight" ? 1.6 : 0);
+    });
+    model.materials.tailLights.forEach((material) => {
+      material.emissiveIntensity = Math.max(tailLightGlow * 3.2, hovered === "taillight" ? 1.6 : 0);
+    });
     Object.entries(config.parts).forEach(([key, definition]) => {
       const pivot = model.pivots[key];
       if (!pivot) return;
-      const isOpen = Boolean(state.partStates[key]);
+      // A 段占位：pivot 键 → §13.1 id → 本地占位状态；B 段改为 store.parts[id]
+      const isOpen = Boolean(aSectionOpen[A_SECTION_LEGACY_ID[key]]);
       if (definition.motion === "slide") {
         (model.slideTargets[key] ?? []).forEach(({ target, base, travel, materials }) => {
           const windowDamping = 1.65;
@@ -323,7 +415,14 @@ function VehicleModelInstance({ vehicleId }) {
     });
   });
 
-  return <group ref={group} scale={model.scale} position={[0, config.groundOffset, 0]} rotation={config.rotation}><primitive object={model.scene} /></group>;
+  return (
+    <>
+      <group ref={group} scale={model.scale} position={[0, config.groundOffset, 0]} rotation={config.rotation}><primitive object={model.scene} /></group>
+      {/* 命中区可视化（?cdHit=1）与车窗悬停高亮；都挂在模型 group 之外的场景根上，用世界坐标 */}
+      <PartHitAreas hitAreas={hitAreas} />
+      <PartHoverHighlight hitAreas={hitAreas} hoveredId={pick.hoveredId} />
+    </>
+  );
 }
 
 export function VehicleModel() {
