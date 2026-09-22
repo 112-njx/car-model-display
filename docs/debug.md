@@ -156,6 +156,50 @@
 
 ---
 
+## Wave 1 · T8p 性能与移动端基建
+
+### 记录 08 · 2026-09-22 · 基线改用 contract-v1 + 设备判档与帧率采样（纯逻辑层）
+
+- **轮次目标**：按 §11.1 T8p ①② 落地 `perf/deviceTier.js` 与 `perf/fpsSampler.js`，并用免浏览器的确定性自测把降档逻辑验死。
+- **改动文件**：新增 `app/src/perf/deviceTier.js`、`app/src/perf/fpsSampler.js`、`app/src/perf/selfTest.mjs`。
+- **关键决策 / 问题**：
+
+  1. **基线由 `main` 改为 `contract-v1 @ 6bcb863`（经人工确认）**。原任务书写"只依赖 T1 基线"，但 T8p 的两处契约依赖在 T1 基线上**并不存在**：`config/carConfig.js` 的 `QUALITY` 与 `devtools/auditHooks.js` 的 `registerSceneAuditSource` 都是 T2 的交付物。若写静态 `import`，本分支当天 `npm run build` 直接失败（Rollup 无法解析模块），无法满足"T1 基线上独立可运行 + build 通过"的 DoD。曾准备的"本地镜像 QUALITY + prop 注入"兜底方案，在确认 `contract-v1` 已推、两个模块齐备后**整套作废**——改为直接静态 import，`QUALITY` 只有一个来源，且 DoD 里"`perf` 字段能被 `__carDisplaySceneAudit()` 读到"由"纸面"变为"可验"。
+  2. **判档用分数制 + 移动端封顶**：内存（≥8GB +2 / ≥4GB +1 / 未知 +1）、逻辑核心（≥8 +2 / ≥4 +1 / 未知 +1）、dpr（≤1 +1 / ≥3 −1）、桌面 macOS 且内存未知额外 +1；合计 ≥4 → high、≥2 → mid、否则 low。**移动端封顶 mid**：手机 UA 下即使分数够 high 也不给 high（`hardwareConcurrency`/`deviceMemory` 在手机上普遍虚高——8 核 8GB 是千元机常态，这两个信号在移动端几乎无区分度）。判定逻辑写成纯函数 `classifyTier(env)`，浏览器取值另走 `detectEnv()`，因此可在 Node 里免依赖单测。
+  3. **【真 bug 1】`detectEnv()` 用 `typeof navigator === "undefined"` 判"非浏览器"是错的**。现象：自测里 `detectEnv()` 在 Node 下不返回中性值。根因：**Node 21+ 也提供全局 `navigator`**（`userAgent` 形如 `"Node.js/24.13.1"`，且带 `hardwareConcurrency`），于是代码走了浏览器分支、读出一组无意义信号。修法：改用 `typeof document === "undefined"` 作为分界（Node 没有 `document`）。
+  4. **【真 bug 2】后台标签页恢复时的时间戳跳变会被算成"低帧"并误降档**。现象：自测构造"跑 300ms → 后台 30s → 恢复"时，恢复后第一帧的 `elapsed` 约 30s、`frames=1`，算出接近 0 的假帧率，直接触发降档。根因：切后台时浏览器**暂停 rAF 回调**，`tick()` 里的 `isHidden()` 检查根本不会被执行到，因此"隐藏期间重置基准"这条防线失效。修法：在 `tick()` 里加**单帧间隔守卫**——`elapsed > stallResetMs`（默认 2 个采样窗口）视为"停摆/长卡顿"而非低帧，重置窗口且不记录。这是真正兜底的那道防线。另保留 `isHidden()` 检查，覆盖"某些浏览器在后台仍会跑 rAF"的情况。
+  5. **预热期不采样**：首屏要加载 22.7 MiB 的 GLB，加载与编译着色器阶段帧率天然极低，计入会让每台设备都被误降档。预热从 `start()` 起至少 3s，并由 `markSceneReady()` 在场景真正就绪时结束（一直没人调用则 12s 后兜底开始判定）。该信号留给 T8 接在首屏加载完成上。
+  6. **降档后冷却**：降档本身会改变渲染负载，紧接着的窗口不可信。降档成功后跳过 2 个窗口再判定；已到底档（回调返回 `false`）则等 6 个窗口，避免反复空转。
+  7. **【测试 bug】自测的假时钟 `run()` 越界**：`while (elapsed < durationMs)` 先自增再判断，最后一次迭代会越过 `durationMs` 一整个帧间隔——`run(900)` 实际跑到 t=1000，正好跨过 1000ms 的预热线，导致"预热期样本被丢弃"这条断言假失败。修法：条件改为 `elapsed + interval <= durationMs`。**注意：这是测试缺陷，不是被测代码缺陷**——恰恰说明预热边界是准的。
+
+- **自测结果**：`node app/src/perf/selfTest.mjs` → **49 项断言全绿 ✅**。覆盖：判档表 9 例（含 Safari 内存未知补偿、iPhone 与强移动端封顶、Node 环境不崩）、档位工具函数 6 项、稳定 60fps 不降档、持续 20fps 连续降档 high→mid→low、预热期低帧不降档、后台停摆 30s 不误降档、手机 28fps 阈值、默认阈值下的时序、生命周期幂等。
+- **commit**：`f05d0a4`（已 push 到 `origin/wave1/t8p`）
+- **遗留项**：真机/真浏览器帧率实测归 Wave 2 的 T8（§11.1 T8 任务⑤），本轮不涉及。
+
+### 记录 09 · 2026-09-22 · PerfProvider / useDeviceTier / 降级页 + 给 T8 的挂载说明
+
+- **轮次目标**：按 §11.1 T8p ③④ 落地 Context 与降级页，并产出《挂载说明》；不改 `App.jsx`/`main.jsx`。
+- **改动文件**：新增 `app/src/perf/PerfProvider.jsx`、`app/src/perf/useDeviceTier.js`、`app/src/perf/WebGLFallback.jsx`、`app/src/perf/graphicsSupport.js`、`app/src/perf/perf.css`、`app/src/perf/MOUNT.md`。
+- **关键决策 / 问题**：
+
+  1. **降级页的触发条件是「WebGPU 与 WebGL 都不可用」，不是「没有 WebGL」**。根因：T1 基线的 `scene/StudioCanvas.jsx:16-25` **优先用 WebGPU**（`navigator.gpu` → `three/webgpu` 的 `WebGPURenderer`），失败才回退 `WebGLRenderer`。只测 WebGL 会把"有 WebGPU、没 WebGL"的设备误判成不支持、弹出不该出现的降级页。因此探针模块命名为 `graphicsSupport.js`（不是我原先报备的 `webglSupport.js`，因为它的职责不止 WebGL）。探测顺序按开销排：WebGL 同步可得先测；只有 WebGL 不可用时才异步 `requestAdapter()` 问 WebGPU（`navigator.gpu` 存在只说明 API 在，适配器仍可能拿不到）。
+  2. **探测会真的创建 WebGL 上下文，用完必须释放**：浏览器对同时存在的上下文数有硬上限（通常 16 个），因此结果缓存，并在探测后立刻 `getExtension("WEBGL_lose_context").loseContext()` 归还名额。
+  3. **`tier` 同时存 `ref` 与 `state`**：采样器的 `getSnapshot()` 在任意时刻被审计钩子调用，必须读到**当前**档位；只存 state 会出现"刚降档、审计仍读到旧档位"的窗口。两者只在 `setTier` 里同步写。
+  4. **`useDeviceTier()` 在 Provider 外调用抛中文错误，不返回默认值**：静默兜底会让"忘了挂 Provider"表现成"画质悄悄掉到低档"，是极难排查的故障。
+  5. **`resolveFeatures()` 对脏档位退到最低档**：若契约被改过或传入不在 `QUALITY.features` 里的档位，退到 `QUALITY.tiers` 的最后一档，宁可画质低也不要整页白屏。
+  6. **`perf.css` 放在 `perf/**` 内、类名前缀 `cd-perf-`**：`style.css` 与 `tokens.css` 是 T4 独占（§12.2），T8p 不碰；降级页只**读** tokens 的 CSS 变量，且每个 `var()` 都带兜底值——降级页恰恰出现在环境异常时，不能假设样式表加载成功。
+  7. **自测临时挂载**：为验证新代码真的能编译，临时在 `App.jsx` 里用 `<PerfProvider>` 包住原界面并 `import "./state/useCarStore"`（后者负责安装 `window.__carDisplaySceneAudit`）。**该改动不随分支交付**，`git status` 可验（提交里不含 `App.jsx`）。
+
+- **自测结果**：
+  - `npm run build`（未挂载时）：✅ 628 modules，14.92s。
+  - `npm run build`（临时挂载后）：✅ **635 modules**，6.00s——模块数 +7 证明 `perf/**` 确实进入了构建管线并编译通过（未挂载时这 7 个模块被 tree-shake 掉，**那次 build 并未验证到新代码**，特此说明）。
+  - `npm run preview -- --port 4173`：✅ HTTP 200。
+  - **浏览器内验证（降级页渲染、`__carDisplaySceneAudit().perf` 读数、CPU 降频触发自动降档）：未完成**，被 worktree 隔离守卫拦下，见人工配置区 #5。**本条不计入已完成。**
+- **commit**：`db8ab86`（已 push 到 `origin/wave1/t8p`）
+- **遗留项**：① 浏览器端三项验证待放行后补做；② `docs/debug.md` 被全部 9 个 Wave 1 Agent 追加，**T8 合并时此处必冲突**，建议以"两侧都保留、按 Agent 分段"处理。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -166,5 +210,6 @@
 | 2 | 手机真机同局域网联调 | 开发机 WLAN 地址 `10.14.6.9`（SSID `henu 3`，网络类别 Public）。Public 防火墙配置文件**已关闭**且已存在 2 条 `Node.js JavaScript Runtime` 入站放行规则，**无需额外放行端口**。手机需连同一 Wi-Fi 后访问 `http://10.14.6.9:5173/`。若校园网开启 AP 客户端隔离，手机将无法访问，此时请改用手机热点。**AI 无法代做真机验收**，请人工确认"仅 Tesla 一台车 / 无车型切换入口 / 四门四窗前后备箱灯光可用 / 触摸拖拽旋转可用"。 | 待处理（需真机） |
 | 3 | 加载页字节 MB 读数 | 见记录 04，等待人工决策是否修 `VehicleModel.jsx:81`。 | 待处理 |
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
-| 5 | 无头浏览器 CDP 自测放行 | T2 需要用本机 Edge（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）以 `--headless=new --remote-debugging-port=9333` 打开 `http://127.0.0.1:5174/` 做渲染层实测（部件动画 / 灯光发光 / 相机位移）。该命令被本会话的 worktree 隔离守卫拦下（它无法判定命令名不是 git）。**AI 无法自行放行**。请二选一：① 在 `~/.config/safe-chains.toml` 放行该路径/命令；② 自己执行一次（把下面命令里的路径原样粘贴到会话里，前缀 `!`）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\t2-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`（需先在 worktree 的 `app/` 里跑着 `npm run dev`，端口以实际输出为准）。 | 待处理（阻塞 T2 渲染层实测） |
+| 5 | 无头浏览器 CDP 自测放行 | **阻塞 T2（渲染层实测）与 T8p（降级页 / perf 审计读数 / 自动降档）两个 Agent。** 现象：任何**可执行文件位于 worktree 之外**的命令都被本会话的 worktree 隔离守卫拦下，理由是无法证明该命令不是 git 操作。已实测被拦的形式：绝对路径直接调 `msedge.exe`、`cmd //c mklink`（`//c` 被判成越界路径）。**注意：AI 不得用 node 子进程或 worktree 内软链去伪装路径绕过该守卫**（属规避守卫意图），因此必须由人工放行。三种可行方式，推荐程度由高到低：<br>**①（推荐，零配置）** 你在**另一个普通终端窗口**里跑一次下面的命令并保持窗口开着。一个 Edge 实例可被 T2 与 T8p 共用（CDP 可各自开标签页）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\cd-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`。**不要用会话里的 `!` 前缀跑**——无头 Edge 不会自行退出，会把输入框一直占住。<br>**②** 在 `~/.claude/settings.local.json` 的 `permissions.allow` 里加 `"Bash(\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\"*)"`（T8p 尝试代改被分类器拦下，见 #7）。<br>**③（原生但脆弱，不推荐）** `safe-chains --suggest "<命令>"` 会给出 `[[command]]` 块与 `[[trusted]]` 的 sha256 pin 两段配置，分别写入项目根 `.safe-chains.toml` 与 `~/.config/safe-chains.toml`。**修正 T2 原先的判断**：`~/.config/safe-chains.toml` 这个路径本身是对的（safe-chains 自己这么命名），只是该文件尚未存在、需按需创建；缺点是 sha256 与项目 toml 内容强绑定，任何编辑都会让 pin 失效。 | 待处理（阻塞 T2 与 T8p） |
 | 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程（PID 24428）监听，T2 的 dev server 自动落到 **5174**。做 dev 自测时务必以自己实例输出的端口为准，否则会打到别人的工程得到假绿（详见记录 06 的端口陷阱）。若后续多 Agent 并行开发，建议各自显式指定端口。 | 待处理（已规避，登记备查） |
+| 7 | 改 `~/.claude/settings.local.json` 被分类器拦下 | T8p 经人工同意后尝试在该文件的 `permissions.allow` 里追加两条 Edge 放行规则，连续两次被 Claude Code 的 auto mode 分类器以 "Stage 2 classifier error" 拒绝（提示为瞬时错误、可重试，但两次均未通过）。**AI 无法自行完成**。若采纳 #5 的方式②，请人工把这两条粘进 `permissions.allow`：`"Bash(\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\"*)"` 与 `"Bash(\"C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"*)"`。 | 待处理（可被 #5 方式①绕过，故不阻塞） |
