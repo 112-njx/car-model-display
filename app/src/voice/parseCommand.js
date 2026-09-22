@@ -176,3 +176,22 @@ export function parseCommandDetailed(input, options = {}) {
 export function parseCommand(input, options = {}) {
   return parseCommandDetailed(input, options).actions;
 }
+
+/**
+ * 多候选择优：ASR 会给出多条候选（`maxAlternatives: 3`），逐条尝试，
+ * 返回**第一条能解析出计划**的结果——这是「识别错了也能救回来」的关键。
+ * 全部解析失败时返回最后一条的诊断信息（用于展示中文纠错提示）。
+ * @param {string[]} alternatives
+ * @param {{vocabulary?:object}} [options]
+ * @returns {ReturnType<typeof parseCommandDetailed>}
+ */
+export function parseAlternatives(alternatives, options = {}) {
+  const list = Array.isArray(alternatives) ? alternatives : [];
+  let last = null;
+  for (const text of list) {
+    const detailed = parseCommandDetailed(text, options);
+    if (detailed.actions.length) return detailed;
+    last = detailed;
+  }
+  return last || parseCommandDetailed("", options);
+}

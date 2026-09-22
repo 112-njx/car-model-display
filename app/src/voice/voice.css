@@ -1,0 +1,348 @@
+/**
+ * T6 语音控车 · 独立样式（roadmap §12.1 命名隔离：类名一律 `cd-voice-` 前缀）
+ *
+ * 主题：新能源中控大屏风格 —— 深灰蓝黑玻璃拟态卡片 + 青蓝点缀。
+ * 可调：所有颜色/圆角/尺寸集中在 `.cd-voice` 的自定义属性上；
+ *       T8 集成期若要与 T4 的 `tokens.css` 对齐，只需覆盖这些变量，不必改本文件。
+ */
+
+.cd-voice {
+  --cd-voice-accent: #4fd8e8;
+  --cd-voice-accent-dim: rgba(79, 216, 232, 0.34);
+  --cd-voice-accent-soft: rgba(79, 216, 232, 0.14);
+  --cd-voice-surface: rgba(10, 18, 26, 0.74);
+  --cd-voice-surface-hi: rgba(18, 30, 40, 0.86);
+  --cd-voice-border: rgba(120, 200, 220, 0.22);
+  --cd-voice-text: #e9f5f9;
+  --cd-voice-text-dim: rgba(233, 245, 249, 0.6);
+  --cd-voice-warn: #ffc46b;
+  --cd-voice-danger: #ff8181;
+  --cd-voice-radius: 18px;
+  --cd-voice-gap: 12px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--cd-voice-border);
+  border-radius: var(--cd-voice-radius);
+  background:
+    radial-gradient(120% 140% at 12% 0%, var(--cd-voice-accent-soft), transparent 62%),
+    var(--cd-voice-surface);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  color: var(--cd-voice-text);
+  font-family: inherit;
+  line-height: 1.45;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.cd-voice--listening {
+  border-color: var(--cd-voice-accent-dim);
+  box-shadow: 0 0 0 1px var(--cd-voice-accent-soft), 0 10px 30px -18px var(--cd-voice-accent);
+}
+
+.cd-voice--error {
+  border-color: rgba(255, 129, 129, 0.4);
+}
+
+.cd-voice--unsupported {
+  background: var(--cd-voice-surface-hi);
+}
+
+/* ── 主行：麦克风按钮 + 文案 ── */
+
+.cd-voice-main {
+  display: flex;
+  align-items: center;
+  gap: var(--cd-voice-gap);
+}
+
+.cd-voice-btn {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--cd-voice-border);
+  border-radius: 50%;
+  background: var(--cd-voice-surface-hi);
+  color: var(--cd-voice-accent);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cd-voice-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--cd-voice-accent-dim);
+}
+
+.cd-voice-btn:focus-visible {
+  outline: 2px solid var(--cd-voice-accent);
+  outline-offset: 3px;
+}
+
+.cd-voice-btn:disabled {
+  cursor: not-allowed;
+  color: var(--cd-voice-text-dim);
+  opacity: 0.7;
+}
+
+.cd-voice--listening .cd-voice-btn {
+  color: #06222a;
+  background: var(--cd-voice-accent);
+  border-color: var(--cd-voice-accent);
+}
+
+.cd-voice-icon {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+}
+
+/* ── 录音波纹（仅聆听态播放） ── */
+
+.cd-voice-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--cd-voice-accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cd-voice--listening .cd-voice-ripple {
+  animation: cd-voice-ripple 1.8s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+}
+
+.cd-voice--listening .cd-voice-ripple--2 {
+  animation-delay: 0.6s;
+}
+
+.cd-voice--listening .cd-voice-ripple--3 {
+  animation-delay: 1.2s;
+}
+
+@keyframes cd-voice-ripple {
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 0.12;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.85);
+  }
+}
+
+/* ── 文案区 ── */
+
+.cd-voice-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cd-voice-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.cd-voice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cd-voice-text-dim);
+  flex: 0 0 auto;
+}
+
+.cd-voice-status[data-status="listening"] .cd-voice-dot {
+  background: var(--cd-voice-accent);
+  box-shadow: 0 0 0 4px var(--cd-voice-accent-soft);
+  animation: cd-voice-pulse 1.4s ease-in-out infinite;
+}
+
+.cd-voice-status[data-status="requesting"] .cd-voice-dot,
+.cd-voice-status[data-status="processing"] .cd-voice-dot {
+  background: var(--cd-voice-warn);
+  animation: cd-voice-pulse 1s ease-in-out infinite;
+}
+
+.cd-voice-status[data-status="error"] .cd-voice-dot,
+.cd-voice-status[data-status="unsupported"] .cd-voice-dot {
+  background: var(--cd-voice-danger);
+}
+
+@keyframes cd-voice-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.cd-voice-transcript {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--cd-voice-text-dim);
+  overflow-wrap: anywhere;
+}
+
+.cd-voice-reply {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--cd-voice-accent);
+  overflow-wrap: anywhere;
+}
+
+.cd-voice-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--cd-voice-warn);
+  overflow-wrap: anywhere;
+}
+
+.cd-voice-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--cd-voice-danger);
+  overflow-wrap: anywhere;
+}
+
+/* ── 底行：降级提示 / 重试 / 播报开关 ── */
+
+.cd-voice-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cd-voice-fallback {
+  flex: 1 1 220px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--cd-voice-warn);
+  overflow-wrap: anywhere;
+}
+
+.cd-voice-retry,
+.cd-voice-speech-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--cd-voice-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cd-voice-text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cd-voice-retry:hover,
+.cd-voice-speech-toggle:hover {
+  color: var(--cd-voice-text);
+  border-color: var(--cd-voice-accent-dim);
+  background: var(--cd-voice-accent-soft);
+}
+
+.cd-voice-retry:focus-visible,
+.cd-voice-speech-toggle:focus-visible {
+  outline: 2px solid var(--cd-voice-accent);
+  outline-offset: 2px;
+}
+
+.cd-voice-speech-toggle[aria-pressed="true"] {
+  color: var(--cd-voice-accent);
+  border-color: var(--cd-voice-accent-dim);
+}
+
+.cd-voice-switch {
+  position: relative;
+  display: inline-block;
+  width: 26px;
+  height: 15px;
+  border-radius: 999px;
+  background: rgba(233, 245, 249, 0.18);
+  transition: background 0.2s ease;
+}
+
+.cd-voice-switch--on {
+  background: var(--cd-voice-accent-dim);
+}
+
+.cd-voice-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--cd-voice-text);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.cd-voice-switch--on .cd-voice-switch-knob {
+  transform: translateX(11px);
+  background: var(--cd-voice-accent);
+}
+
+/* ── 紧凑模式（手机底栏）── */
+
+.cd-voice--compact {
+  padding: 10px 12px;
+  gap: 8px;
+  border-radius: 16px;
+}
+
+.cd-voice--compact .cd-voice-btn {
+  width: 44px;
+  height: 44px;
+}
+
+.cd-voice--compact .cd-voice-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.cd-voice--compact .cd-voice-transcript {
+  display: none;
+}
+
+.cd-voice--compact .cd-voice-foot {
+  font-size: 11px;
+}
+
+/* ── 无障碍：尊重系统「减少动态效果」 ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .cd-voice-ripple,
+  .cd-voice-status[data-status] .cd-voice-dot,
+  .cd-voice-btn,
+  .cd-voice-switch-knob {
+    animation: none !important;
+    transition: none !important;
+  }
+}
