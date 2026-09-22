@@ -313,6 +313,35 @@
   2. **CHANGELOG 0010**（车身固定外观 `APPEARANCE`）待 T2/T8 受理——T8 删 shim 前必须先落地。
   3. `VehicleModel.jsx` 的 `trackInitialTransfer` 保持 `false`，等人工确认（#9）。
 
+### 记录 11 · 2026-09-22 · B 段收尾：修渲染层矩阵 bug + 处理 rebase 后的 push 分歧
+
+- **轮次目标**：交付前自查，修掉一处渲染层真 bug；把 rebase 造成的 push 分歧按纪律处理干净。
+- **改动文件**：`app/src/interaction/PartHitAreas.jsx`。
+- **关键决策 / 问题**：
+  1. **（真 bug，自查发现）`matrixAutoUpdate={false}` 下直接改 `matrix` 不会生效**。
+     现象预判：`?cdHit=1` 的命中区线框与车窗悬停高亮会**钉死在场景原点**，不跟车、不跟相机。
+     根因：`<mesh matrixAutoUpdate={false}>` 后，three 的 `updateMatrixWorld()` 里
+     `if (this.matrixAutoUpdate) this.updateMatrix();` 被跳过，而 `matrixWorldNeedsUpdate` 仍为 `false`
+     → `matrixWorld` 根本不重算，我写进 `matrix` 的值从未被使用。
+     修法：改成每帧写 `mesh.position` / `mesh.scale`（`matrixAutoUpdate` 保持默认 true，让 three 自己算），
+     并在两处都加注释说明这个坑。**该 bug 不影响拾取逻辑**（命中判定走解析 OBB，与渲染无关），
+     但会直接毁掉"悬停高亮明确"这条 DoD——车窗开启后正是靠这个半透明盒子做高亮的。
+  2. **rebase 后的 push 分歧按纪律处理**：B 段 rebase 到 `contract-v1` 改写了本地历史，远端 `wave1/t5`
+     仍指向 rebase 前的提交，`git push` 被拒。**未 force push**（纪律明令禁止），改为
+     `git merge origin/wave1/t5 -X ours` 保留双方历史后推送。
+     踩到一个坑：`-X ours` 只作用于**冲突 hunk**，而"A 段新增占位块"在两边是**相同的新增**（非冲突），
+     合并后 git 又把它带回来了（我这边随后删掉了它，git 判定为"对面新增"）→ 结果树里出现了引用已删常量的
+     死代码块，且 `const pick`/`hitAreas`/`handlePick` 重复声明，**会直接编译失败**。
+     修法：`git checkout 74c2b78 -- <该文件>` 还原，`git commit --amend` 修正合并提交，
+     再用 `git diff 74c2b78 HEAD` 确认结果树与合并前**逐字节一致**（空输出）后才推送。
+- **自测结果**：
+  - **无头自测**：**22/22 通过**（复跑）。
+  - **`npm run build`**：✅ 5.79s 通过。
+  - **结果树一致性**：`git diff 74c2b78 HEAD --stat` 空输出 ✅。
+  - **真实浏览器点按验收**：仍未跑（人工配置区 #7）。
+- **commit**：见本记录所在提交（`wave1/t5` 已推送至远端）。
+- **遗留项**：同记录 10 的三条。
+
 ---
 
 ## 需要项目人工配置的地方

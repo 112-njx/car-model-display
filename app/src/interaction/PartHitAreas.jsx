@@ -10,7 +10,7 @@
  */
 import React, { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Color, DoubleSide, Matrix4, Vector3 } from "three";
+import { Color, DoubleSide, Vector3 } from "three";
 import { buildHitAreas, partWorldBox, proxyWorldBox } from "./partMapping";
 
 const PROXY_COLOR = new Color("#38bdf8");
@@ -56,7 +56,6 @@ function hitTargetsOf(hitAreas) {
  */
 export function PartHoverHighlight({ hitAreas, hoveredId }) {
   const mesh = useRef(null);
-  const matrix = useMemo(() => new Matrix4(), []);
   const center = useMemo(() => new Vector3(), []);
   const size = useMemo(() => new Vector3(), []);
   const proxy = useMemo(
@@ -64,19 +63,21 @@ export function PartHoverHighlight({ hitAreas, hoveredId }) {
     [hitAreas, hoveredId],
   );
 
+  // 注意：这里必须写 position/scale（让 three 每帧自己 updateMatrix），
+  // 不能设 matrixAutoUpdate={false} 再直接改 matrix —— 那样 matrixWorldNeedsUpdate 保持 false，
+  // matrixWorld 不会重算，盒子会钉死在原点。
   useFrame(() => {
     if (!mesh.current || !proxy) return;
     const box = proxyWorldBox(proxy);
     box.getCenter(center);
     box.getSize(size);
-    matrix.makeScale(size.x || 1e-4, size.y || 1e-4, size.z || 1e-4);
-    matrix.setPosition(center);
-    mesh.current.matrix.copy(matrix);
+    mesh.current.position.copy(center);
+    mesh.current.scale.set(size.x || 1e-4, size.y || 1e-4, size.z || 1e-4);
   });
 
   if (!proxy) return null;
   return (
-    <mesh ref={mesh} matrixAutoUpdate={false} renderOrder={998} frustumCulled={false}>
+    <mesh ref={mesh} renderOrder={998} frustumCulled={false}>
       <boxGeometry args={[1, 1, 1]} />
       <meshBasicMaterial
         color={PROXY_COLOR}
@@ -93,10 +94,10 @@ export function PartHitAreas({ hitAreas, debug }) {
   const show = debug ?? hitDebugFromLocation();
   const boxes = useRef([]);
   const targets = useMemo(() => hitTargetsOf(hitAreas), [hitAreas]);
-  const matrix = useMemo(() => new Matrix4(), []);
   const center = useMemo(() => new Vector3(), []);
   const size = useMemo(() => new Vector3(), []);
 
+  // 同 PartHoverHighlight：写 position/scale，不写 matrix（见那里的注释）
   useFrame(() => {
     if (!show) return;
     targets.forEach((target, index) => {
@@ -107,9 +108,8 @@ export function PartHitAreas({ hitAreas, debug }) {
       if (!box) return;
       box.getCenter(center);
       box.getSize(size);
-      matrix.makeScale(size.x || 1e-4, size.y || 1e-4, size.z || 1e-4);
-      matrix.setPosition(center);
-      mesh.matrix.copy(matrix);
+      mesh.position.copy(center);
+      mesh.scale.set(size.x || 1e-4, size.y || 1e-4, size.z || 1e-4);
     });
   });
 
@@ -120,7 +120,6 @@ export function PartHitAreas({ hitAreas, debug }) {
         <mesh
           key={target.key}
           ref={(node) => { boxes.current[index] = node; }}
-          matrixAutoUpdate={false}
           renderOrder={999}
           frustumCulled={false}
         >
