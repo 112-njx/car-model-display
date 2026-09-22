@@ -118,6 +118,30 @@
   2. 「打开空调和车窗」会**部分执行**（只开车窗）。这是「分句各自解析」的必然结果，Toast 会明确回执实际执行了什么，暂不拦截。
   3. 词表以 §13.1 镜像编写；B 段接入 carConfig 后需复核 label/aliases 与实测是否一致。
 
+### 记录 02 · 2026-09-22 10:37 · A 段（2/4）SpeechRecognition 兼容封装
+
+- **轮次目标**：把 Web Speech API 的浏览器差异、能力探测、权限、错误重试、安全上下文检测封成一层，供 UI 与 B 段状态机使用；同时把 §13.3 ④ 注入点的**底层机制**（可替换构造函数）做好，使 mock 回放能走完整链路。
+- **改动文件**：`app/src/voice/recognition.js`（新增）；`app/tmp/t6-recognition.test.mjs`（新增，**被 .gitignore 忽略，不进仓库**）。
+- **关键决策**：
+  1. **注入点做在封装层**：`setRecognitionCtor(ctor|null)` 是 `window.__carDisplayVoiceInject` 的底层实现（B 段只做一层 global 挂载 + store 同步）。注入后 `detectSupport()` 直接返回 `supported:true, secure:true`——**即使当前是 http 非安全上下文**，这样 T9 在 headless http 下回放 mock 不会被降级分支拦掉（§13.3 ④ 的硬要求）。
+  2. **兼容 `new` 与工厂两种注入形式**：`instantiate()` 先试 `new Ctor()`，失败（箭头函数）再试 `Ctor()`，避免 T9 写 mock 时踩「箭头函数不可 new」的坑。
+  3. **错误分级**：`no-speech / network / audio-capture` 可重试（自动重启，退避 400ms×n 上限 2s，最多 3 次）；`not-allowed / service-not-allowed / language-not-supported / bad-grammar` 致命不重试，直接给中文权限/环境提示。拿到有效定稿结果即把重试计数复位（长会话不会被偶发噪声耗尽重试额度）。
+  4. **参数在 `start()` 之前写入实例**：这是 mock 实现能读到 `lang/continuous/interimResults/maxAlternatives` 的前提，已在《挂载说明》里写明给 T9。
+  5. **`maxAlternatives: 3`**：定稿结果带多候选，B 段可逐个尝试解析（挑第一条能解析的），显著提升 ASR 误识下的命中率。
+  6. **测试钩子 `setSupportOverrideForTest()`**：仅用于沙盒页演示「不支持 / 非安全上下文」两条降级路径，默认 null 不影响主链路。
+- **关键问题（本轮自测发现并修复）**：
+  1. **现象**：定稿后状态为 `processing` 时再次调用 `start()`，会**新建第二个识别实例**（两路麦克风采集）。**根因**：`start()` 的守卫只判断 `state === 'listening' | 'starting'`，而拿到定稿后状态已是 `processing`。**修法**：守卫改为 `if (this.wantListening && this.instance) return true`，覆盖全部「已在监听」的中间态。
+  2. **测试夹具自身两处错误**（非产品缺陷，记录备查）：非安全场景夹具的 `hostname` 仍写 `localhost`，命中「localhost 视为安全上下文」的兜底分支；`fakeBrowser({ctor: undefined})` 因 JS 默认参数规则回落到 Mock，导致「无 API」用例失真。均已修正夹具。
+  3. **Node 24 的 `globalThis.navigator` 是只读 getter**，`globalThis.navigator = {...}` 抛 TypeError，需用 `Object.defineProperty` 覆盖。
+- **自测结果**：
+  - `node app/tmp/t6-recognition.test.mjs`：**22 项断言全部通过**——能力探测 4 项（含 Firefox/非安全上下文/测试钩子）、注入点 4 项（http 下注入即 supported、传 null 恢复、非法值抛错、工厂函数）、识别链路 6 项（参数写入、多候选、实时字幕、重复 start 不重建、stop）、重试与致命错误 4 项、权限请求 3 项。
+  - `node app/src/voice/commandCases.js`：80/80 仍全绿（无回归）。
+  - 权限路径已验证：`getUserMedia` 授权后**立即释放音轨**（否则麦克风指示灯常亮）。
+- **commit**：`960f460`
+- **遗留项**：
+  1. 真实浏览器的识别行为（Chrome/Edge 的 `onend` 时机、`continuous` 在安卓 Chrome 上的表现）只能真机确认，已登记人工配置区。
+  2. `audio-capture` 目前按「可重试」处理（可能是设备被占用，重试有意义）；若真机表现为永久无设备，真机验收后再决定是否改为致命。
+
 ---
 
 ## 需要项目人工配置的地方
