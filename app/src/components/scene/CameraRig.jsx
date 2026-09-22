@@ -10,6 +10,44 @@ import { IDLE_MODES, IDLE_ROTATE_DEFAULTS, IdleAutoRotate, dampXYZ, distanceXYZ 
 // 预设 id → { position, target }（§13.1 CAMERA_VIEWS；T2 已把 T1 基线的机位数值并入契约）
 const PRESETS = Object.fromEntries(CAMERA_VIEWS.map((v) => [v.id, { position: v.position, target: v.target }]));
 
+// 与 StudioCanvas 的 `camera.fov` 初值保持一致
+const BASE_FOV = 36;
+
+/**
+ * T8 集成期移动端适配：**竖屏下车模横向被裁**。
+ *
+ * 现象：390×844（aspect 0.462）下，垂直 fov 36° 对应的水平视角只有 **17.1°**，
+ * 在 hero 机位（距注视点 10.46）的可视宽度约 **3.15 m**，而车长 **4.7 m** ⇒ 车头车尾必然出画。
+ * 根因：§13.1 的预设机位是按**桌面横屏**标定的，而 three 的 `fov` 是**垂直**视角——
+ * 竖屏时水平视角会随宽高比等比收窄，这是透视相机的固有行为，不是某个组件的 bug。
+ *
+ * 补偿策略：**只放不缩**，且 `aspect >= 1` 时两个系数恒为 1
+ * ⇒ **桌面（横屏）行为与 T7 自测时逐字一致，不受本改动影响**。
+ *   · 后退为主：距离 × clamp(1/aspect, 1, 1.8) —— 保持透视自然，不靠大广角硬撑；
+ *   · 广角为辅：fov   × clamp(sqrt(1/aspect), 1, 1.35) —— 补足纵向构图，避免车在竖屏里显得过小。
+ * 两者叠加后 390×844 的可视宽度约 7.9 m，车长 4.7 m 有充分余量。
+ *
+ * @param {number} aspect 视口宽高比（width / height）
+ * @returns {{ distanceScale: number, fovScale: number }}
+ */
+export function responsiveCameraScale(aspect) {
+  if (!Number.isFinite(aspect) || aspect <= 0 || aspect >= 1) return { distanceScale: 1, fovScale: 1 };
+  const inverse = 1 / aspect;
+  return {
+    distanceScale: Math.min(1.8, Math.max(1, inverse)),
+    fovScale: Math.min(1.35, Math.max(1, Math.sqrt(inverse))),
+  };
+}
+
+/** 按距离系数把预设机位沿「注视点 → 机位」方向外推，方向不变、只改半径。 */
+function scaledPreset(preset, distanceScale) {
+  const [tx, ty, tz] = preset.target;
+  const dx = (preset.position[0] - tx) * distanceScale;
+  const dy = (preset.position[1] - ty) * distanceScale;
+  const dz = (preset.position[2] - tz) * distanceScale;
+  return { position: [tx + dx, ty + dy, tz + dz], target: preset.target };
+}
+
 /**
  * T7 · 相机机位与待机自转（roadmap §12.3 T7 / §13.1 / §13.3③）
  *
@@ -31,8 +69,13 @@ export function CameraRig({ autoRotateEnabled = true }) {
   const bumpInteraction = useCarStore((s) => s.bumpInteraction);
   const setAutoRotate = useCarStore((s) => s.setAutoRotate);
 
-  const desiredPosition = useRef(new Vector3(...PRESETS.hero.position));
-  const desiredTarget = useRef(new Vector3(...PRESETS.hero.target));
+  // T8 移动端适配：按视口宽高比补偿预设机位与 fov（横屏时两系数恒为 1，桌面行为不变）
+  const aspect = useThree((s) => (s.size.height ? s.size.width / s.size.height : 1));
+  const { distanceScale, fovScale } = responsiveCameraScale(aspect);
+
+  const initial = scaledPreset(PRESETS.hero, distanceScale);
+  const desiredPosition = useRef(new Vector3(...initial.position));
+  const desiredTarget = useRef(new Vector3(...initial.target));
   const animating = useRef(false);
 
   // 与 IdleAutoRotate 共享的互斥模式：非 free 时本组件让出相机写权
@@ -40,14 +83,21 @@ export function CameraRig({ autoRotateEnabled = true }) {
   const idleApi = useRef(null); // 由 IdleAutoRotate 回填 { notifyInteraction, startOrbit, debug }
   const frameCount = useRef(0); // DEV 诊断：帧循环存活计数
 
-  // 预设切换：先打断自转/环绕（互斥），再交给预设阻尼平滑到位
+  // fov 随视口宽高比补偿（横屏 fovScale===1，与 T7 自测时的 36° 完全相同）
   useEffect(() => {
-    const preset = PRESETS[view] ?? PRESETS.hero;
+    camera.fov = BASE_FOV * fovScale;
+    camera.updateProjectionMatrix();
+  }, [camera, fovScale]);
+
+  // 预设切换：先打断自转/环绕（互斥），再交给预设阻尼平滑到位
+  // 依赖里带 distanceScale：旋屏（横↔竖）后按新宽高比重算机位
+  useEffect(() => {
+    const preset = scaledPreset(PRESETS[view] ?? PRESETS.hero, distanceScale);
     idleApi.current?.notifyInteraction(); // 内含 bumpInteraction()：预设指令也是用户输入
     desiredPosition.current.set(...preset.position);
     desiredTarget.current.set(...preset.target);
     animating.current = true;
-  }, [view]);
+  }, [view, distanceScale]);
 
   // 兜底：同一预设的"重复下发"（用户拖走后点「复位」）在 §13.2 里不会改变 cameraView，
   // 因此上面的 view effect 不会触发，表现为「复位没反应」。zustand 对每次 set 都会通知订阅者，
@@ -64,14 +114,14 @@ export function CameraRig({ autoRotateEnabled = true }) {
       if (animating.current) return; // 预设动画进行中
       if (idleApi.current?.isPointerActive?.()) return; // 用户正在拖拽
       if (distanceXYZ(camera.position, desiredPosition.current) < IDLE_ROTATE_DEFAULTS.presetSettleEpsilon) return; // 已在位
-      const preset = PRESETS[state.cameraView] ?? PRESETS.hero;
+      const preset = scaledPreset(PRESETS[state.cameraView] ?? PRESETS.hero, distanceScale);
       idleApi.current?.notifyInteraction();
       desiredPosition.current.set(...preset.position);
       desiredTarget.current.set(...preset.target);
       animating.current = true;
     });
     return unsubscribe;
-  }, [camera]);
+  }, [camera, distanceScale]);
 
   // §13.3③：把相机审计字段注册进 window.__carDisplayCameraAudit()
   // 注：scene 级 autoRotate 无需在此注册——store.autoRotate 由本组件写入，本身即场景真实值。
@@ -124,8 +174,9 @@ export function CameraRig({ autoRotateEnabled = true }) {
       enablePan={false}
       // minDistance 由 4.1（T1 基线值）下调到 3.4：§13.1 的 detail 预设机位距注视点 3.83，
       // 原值会让 detail 永远到不了位（OrbitControls 夹住距离，误差 0.27）。T8 联调可再调。
-      minDistance={3.4}
-      maxDistance={13}
+      // T8 移动端适配：上下限同步乘 distanceScale，否则竖屏外推后的机位（最大 18.8）会被夹住。
+      minDistance={3.4 * distanceScale}
+      maxDistance={13 * distanceScale}
       minPolarAngle={Math.PI * 0.22}
       maxPolarAngle={Math.PI * 0.48}
       onStart={() => { animating.current = false; }}
