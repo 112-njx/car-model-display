@@ -156,6 +156,112 @@
 
 ---
 
+## Wave 1 · T5 3D 点击拾取控车（raycast）
+
+> 分支 `wave1/t5`，worktree `.claude/worktrees/wave1+t5`，基线 `0c41982`（T1 单车基线）。
+> 独占文件：`app/src/interaction/**`、`app/src/components/scene/VehicleModel.jsx`。
+
+### 记录 08 · 2026-09-22 · A 段：拾取几何 / 手势判别 / 悬停高亮 / tooltip / partKey 反查
+
+- **轮次目标**：A 段（契约无关）——不依赖 `carConfig`/`useCarStore`，用占位数据把拾取几何、手势判别、
+  悬停高亮、中文 tooltip、命中点反查 partKey 做完并自测通过。
+- **改动文件**：
+  | 文件 | 内容 |
+  | --- | --- |
+  | `app/src/interaction/partMapping.js` | 新增。纯函数层：pivot 子树 mesh 收集、mesh→partId 反查（更深的 pivot 优先）、薄玻璃的隐形加厚命中盒（解析 OBB）、最近命中拾取、世界包围盒、屏幕投影、`computeHitTargets`、`isTapGesture` |
+  | `app/src/interaction/PartHitAreas.jsx` | 新增。`usePartHitAreas()` 编译命中区；`<PartHitAreas debug>` 命中区线框可视化（`?cdHit=1`）；`<PartHoverHighlight>` 车窗悬停的半透明青色命中盒 |
+  | `app/src/interaction/usePartPick.js` | 新增。指针事件监听、手势判别、悬停 emissive 提亮 + pointer 光标 + 中文 tooltip、命中后回调 |
+  | `app/src/interaction/selftest/pick.selftest.mjs` | 新增。无头自测（Node 直跑，合成场景） |
+  | `app/src/interaction/selftest/pick.cdp.mjs` | 新增。真实浏览器 CDP 自测（鼠标点击/拖拽/触摸/点中率），沿用 T1 `scripts/verify-*.mjs` 的裸 CDP 模式 |
+  | `app/src/components/scene/VehicleModel.jsx` | 改造。挂载命中区与高亮层；新增 `lightMeshes`（按灯分组 mesh）；**A 段占位接线块**（见下） |
+- **关键决策**：
+  1. **GLB 实测节点树先读事实**：解析 `tesla-model-3-2018.glb` 的 JSON chunk（301 节点 / 176 mesh / 58 材质），
+     得到真实结构 `door_lf_dummy → door_lf → door_lf_glass.0_0`、`bonnet_dummy → bonnet_ok → …`、
+     `boot_dummy → black_boot → boot`、四门四窗齐备。**注意：`studioConfig.js` 写的 `door_lf_glass0_0` 与真实节点名
+     `door_lf_glass.0_0` 不一致，只因 `resolvePivot` 会剥掉非字母数字字符做归一化比对才恰好命中**——T2 填
+     `carConfig.PARTS[].node` 时应按实测写 `door_lf_glass.0_0`。
+  2. **命中目标分两层**：① 部件 pivot 子树内的真实 mesh（像素级精确，随开合动画一起运动）；
+     ② 薄玻璃补一个**闭合位姿的隐形加厚命中盒**。第 ② 层是必需的——车窗开启后玻璃 `visible=false` 且已滑入门腔，
+     没有它车窗就再也点不回去。
+  3. **代理盒用解析 OBB 而非隐形 mesh**：记录在 pivot **父节点局部坐标系**里（车门打开时命中盒跟着车门走，
+     而不是留在原地），命中时按父节点当前世界矩阵重建。好处：零 draw call、天然跟随 pivot、不污染 `Box3.setFromObject`。
+     可视化核对由 `<PartHitAreas debug>` 承担（`?cdHit=1`）。
+  4. **只给 `group === 'windows'` 建代理盒**，不是所有部件。原因：若给车门也建代理盒，车门盒会包住车窗区域，
+     射线先进入车门盒 → 点玻璃会误判成点车门。车窗是 §13.1 冻结的分组，不涉及硬编码 node。
+  5. **命中判定取"最近命中"**（真实 mesh 与代理盒一起按距离排序）。实测验证：车窗打开时透过窗洞看到远侧车门，
+     代理盒（近）胜出 → 判车窗；点车门钣金时真实 mesh 更近 → 判车门。无需任何偏置常数。
+  6. **`hitTargets.screen` 用 clientX/clientY 坐标系**（canvas CSS 尺寸 + canvas 在视口中的 left/top 偏移），
+     T9 的 CDP 脚本可直接拿去派发事件，不必再换算。`center`/`size` 为**世界坐标**。
+  7. **屏幕坐标是"回投验证过"的**：`computeHitTargets` 先取包围盒中心，再用部件表面顶点采样做候选，
+     每个候选都反向射线验证"首个命中确实是本部件"，全部不通过才退回包围盒中心投影。
+     这样 T9 拿到的坐标一定是能真正点中该部件的。
+  8. **"旋转中不触发点击"用两条独立判据**：① `pointerdown→up` 位移 ≤ `tapMaxMovePx` 且时长 ≤ `tapMaxDurationMs`；
+     ② 手势期间 OrbitControls 的 `change` 事件是否让相机真的位移超过 0.01 世界单位。
+     只读 `useThree(s => s.controls)`（drei `makeDefault` 提供）与相机，**不改 CameraRig.jsx**。
+  9. **不 stopPropagation / preventDefault**，OrbitControls 的拖拽旋转照常；触摸与鼠标共用 PointerEvent 路径，
+     第二根手指落下即作废当前点击候选（避免双指缩放误触发）。
+  10. **悬停高亮**：对部件材质做 emissive 青蓝提亮（`#38bdf8`），进入时快照原值、离开时精确还原；
+     车窗开启后玻璃不可见，由 `<PartHoverHighlight>` 画半透明青色命中盒兜底。
+     大灯的 emissiveIntensity 由 `VehicleModel` 的帧循环驱动，故在帧循环里给悬停灯加一个下限（1.6）。
+  11. **tooltip 用独立 DOM 节点 + 内联样式**，不新建/不改任何 css 文件（`style.css`/`tokens.css` 属 T4），
+     类名 `cd-hit-tooltip` 符合 §12.1 的 `cd-hit-` 前缀约定。
+  12. **A 段占位接线**：`VehicleModel.jsx` 里一块显式标注的 `A_SECTION_*` 常量（§13.1 冻结的 id/label/group + 现有
+     `studioConfig` 已解析好的 pivot 键）+ 本地 `useState` 状态。**本文件不出现任何 GLB 节点名**。
+     B 段整块删除，改为 `carConfig.PARTS` + `useCarStore`。
+  13. **无头自测**：`partMapping.js` 全部为纯函数，可在 Node 里用合成场景（门 + 玻璃 + 后备箱 + 大灯）直接断言，
+     不依赖浏览器。这是本轮发现两个真 bug 的关键手段。
+- **问题与修法**（两个都由无头自测抓出）：
+  1. **代理盒退化成零体积 → 车窗打开后点不中**。
+     现象：车窗打开后点窗洞，命中的是远侧车门而不是车窗。
+     根因：`proxyBox()` 里 `Box3.set(_point.set(min…), _point.set(max…))` —— 两个实参指向**同一个**
+     `Vector3` 临时对象，`_box2.set()` 内部 `min.copy(); max.copy()` 时两者都已是 max 值，包围盒塌缩成一个点。
+     修法：改用 `_box2.min.set(...)` / `_box2.max.set(...)` 分别赋值，并在注释里写明这个坑。
+  2. **大灯没有 hitTargets**。
+     现象：`hitTargets` 只有 10 条，缺 `headlight`。
+     根因：`partWorldBox()` 只处理 `descriptor.pivot`，而灯光没有 pivot（是材质匹配出来的 mesh 集合）→ 空盒被过滤。
+     修法：无 pivot 时对 `descriptor.meshes` 逐个 `setFromObject` 求并集。
+- **自测结果**：
+  - **无头自测**（`cd app && node src/interaction/selftest/pick.selftest.mjs`）：**22/22 通过**。
+    覆盖：代理盒只给车窗、玻璃归 window_lf（更深 pivot 优先）、车门钣金归 door_lf、大灯归 headlight、
+    点车门/玻璃/后备箱/大灯/空白、车窗打开后点窗洞判 window_lf、点车门钣金仍判 door_lf、
+    透过窗洞看远侧车门判 window_lf、点远侧车门本体判 door_rf、
+    手势 6 例（原地 120ms / 10px / 400ms / 6px 边界 / pointerId 不一致 / 缺起点）、
+    hitTargets 12 条且每条 screen 回投都命中自己。
+  - **`npm run build`**：✅ 628 modules，12.25s（沿用基线的 3 条既有警告，无新增）。
+  - **`npm run dev`**：✅ 端口 5175 就绪（5173/5174 被同波次其他 worktree 占用）。
+  - **真实浏览器桌面/手机点按与点中率**：脚本已就绪（`selftest/pick.cdp.mjs`），但**本 Agent 的沙箱不允许
+    启动 worktree 之外的可执行文件（Edge），无法自行跑**。已登记「需要项目人工配置的地方」#7。
+- **commit**：`394e200`
+- **遗留项**：
+  1. **真实浏览器双端点按验收未跑**（见人工配置 #5）——需要人工用 `!` 前缀启动一次无头 Edge，
+     之后本 Agent 可直接跑 `selftest/pick.cdp.mjs` 产出桌面点击/拖拽/触摸/点中率的实测数字。
+  2. **§13.1 缺开合动画参数**：`PARTS` 只有 `id/group/label/node/aliases`，没有 `motion/axis/angle/travel`
+     （滑窗还缺 `companions`），而 `VehicleModel` 的开合动画必须靠这些参数。已作为问题上报（见下）。
+  3. **`VehicleModel.jsx:81` 的 `vehicleId === "mustang"` 死条件**：T1 记录 03 遗留项 2 明确"属 T5 独占文件，
+     留待 T5 清理"，T1 记录 04 亦登记为待人工决策。**本 Agent 未擅自改动**，等人工确认后再修（见下）。
+
+### 记录 09 · 2026-09-22 · A 段遗留：上报待确认项（未改代码）
+
+- **轮次目标**：按工作纪律「不确定必须先停下问我」，把 A 段期间发现的 3 个需要人工决策/受理的事项整理上报。
+- **改动文件**：无（仅本记录）。
+- **待确认事项**：
+  1. ~~**§13.1 缺开合动画参数（规格字段不够，建议走 §13.4 只增不改）**——`PARTS` 无 `motion/axis/angle/travel`，
+     滑窗还需 `companions`。这些字段是 T1 基线 `studioConfig.js` 已有的实测值，属"只增字段、不改既有语义"，
+     建议由 T2 在 `carConfig.PARTS` 中补齐，T5 的 B 段跟随。~~
+     **已解决**：T2 在 `contract-v1` 的 CHANGELOG 0002 中补齐了 `motion/axis/angle/travel`（取值与 T1 基线逐项一致，
+     零行为变化），另在 0004 补了 `MODEL_URL`/`MODEL_TRANSFORM`/`MODEL_MATERIALS`。T5 的 B 段直接消费，无需人工介入。
+     另注：`companions` 未被补入，但实测 T1 基线 `studioConfig` 的 4 个滑窗部件也都没有 `companions`
+     （只有 `attachments` 用于门把手之类），故不影响功能。
+  2. **Node 版本**：已由 T1 记录 02 人工确认为"用 Node 24 继续"，本 Agent 沿用（`npm install` 仅 `EBADENGINE` 告警）。
+  3. **`VehicleModel.jsx:81` 死条件**：修法为一个 token（`vehicleId === "mustang" && !state.initialSceneReady`
+     → `!state.initialSceneReady`），可恢复 roadmap §2.2 列为"直接继承"的字节级加载进度读数。
+     该文件属 T5 独占，T1 已明确留给 T5 清理。**建议修**，等人工确认（人工配置区 #9）。
+- **自测结果**：无代码改动。
+- **commit**：见本记录所在提交。
+- **遗留项**：同上，等人工回复后继续 B 段。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -168,3 +274,6 @@
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
 | 5 | 无头浏览器 CDP 自测放行 | T2 需要用本机 Edge（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）以 `--headless=new --remote-debugging-port=9333` 打开 `http://127.0.0.1:5174/` 做渲染层实测（部件动画 / 灯光发光 / 相机位移）。该命令被本会话的 worktree 隔离守卫拦下（它无法判定命令名不是 git）。**AI 无法自行放行**。请二选一：① 在 `~/.config/safe-chains.toml` 放行该路径/命令；② 自己执行一次（把下面命令里的路径原样粘贴到会话里，前缀 `!`）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\t2-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`（需先在 worktree 的 `app/` 里跑着 `npm run dev`，端口以实际输出为准）。 | 待处理（阻塞 T2 渲染层实测） |
 | 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程（PID 24428）监听，T2 的 dev server 自动落到 **5174**。做 dev 自测时务必以自己实例输出的端口为准，否则会打到别人的工程得到假绿（详见记录 06 的端口陷阱）。若后续多 Agent 并行开发，建议各自显式指定端口。 | 待处理（已规避，登记备查） |
+| 7 | **T5 真实浏览器点按验收** | T5 的沙箱不允许启动 worktree 之外的 Edge，`app/src/interaction/selftest/pick.cdp.mjs` 无法自行跑。请在 `D:\car_display\.claude\worktrees\wave1+t5` 下用 `!` 前缀执行一次：`"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --disable-gpu --use-gl=angle --use-angle=swiftshader --remote-debugging-port=12319 --user-data-dir=C:/Users/112/AppData/Local/Temp/t5-edge-profile --no-first-run about:blank`（需先 `npm run dev`，端口以实际输出为准），之后 T5 即可自行跑出桌面点击/拖拽不误触发/触摸点按/玻璃点中率的实测数字。 | 待处理 |
+| 8 | ~~§13.1 缺开合动画参数~~ | 已由 T2 在 `contract-v1` 补齐（CHANGELOG 0002：`PARTS[].motion/axis/angle/travel`）。T5 的 B 段直接消费，无需人工介入。 | 已解决 |
+| 9 | **`VehicleModel.jsx:81` 死条件** | `vehicleId === "mustang"` 在单车裁剪后恒为 false，导致加载页丢失字节级 MB 读数（T1 记录 04）。该文件属 T5 独占、T1 已留给 T5 清理。建议修（一个 token）。 | 待处理（等人工确认） |
