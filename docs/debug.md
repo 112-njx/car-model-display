@@ -1081,6 +1081,75 @@
 
 ---
 
+### 记录 T8-05 · 2026-09-22 · 人工三项裁定落地 + 代做 T10a
+
+- **轮次目标**：落地人工对「WebGPU 策略 / Toast 文案 / 性能优先级」的三项裁定；按 §11.1 T10a 任务书代做交付准备。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/components/scene/StudioCanvas.jsx` | **强制 WebGL**：去掉 `navigator.gpu` 优先分支与 `await import("three/webgpu")` |
+  | `app/src/voice/voiceController.js` | 快照新增 `actions`（成功执行的动作计划），供接线层对齐文案（只增字段，不影响执行） |
+  | `app/src/voice/useVoiceControl.js` | `voiceToastText(reply, actions)` 改为优先查 `ui/strings.js` 模板，超范围时回退 `已执行：<回执>` |
+  | `app/vite.config.js` | `base` 由 `GITHUB_ACTIONS ? "/FormDrive/" : "/"` 改为 **`'./'`** |
+  | `vercel.json`（新） | Vercel 部署配置（`app/` 子目录构建 + 静态资源缓存头） |
+  | `.github/workflows/deploy-pages.yml`（新） | GitHub Pages 部署（**手动触发**，理由见下） |
+  | `readme.md` | 交付骨架：原始 brief、功能、快速开始、部署、目录结构、文档索引、已知限制、许可 |
+  | `docs/release-notes.md`（新） | 发布说明骨架 + 部署章节占位（T10b 定稿） |
+  | `THIRD-PARTY.md`（新） | 第三方许可归属：FormDrive(MIT) / Tesla 模型(CC BY 4.0) / 6 个 npm 依赖(MIT) / 2 款字体(OFL) |
+- **关键决策 / 问题**：
+
+  1. **强制 WebGL（人工裁定）**。落地后实测：**未捕获异常 514 → 0 条**、`verify-parts` 由 68/10 变为 74/4（WebGL 路径）、
+     包体 **653 → 652 modules**（`three/webgpu` 不再进 bundle）。
+     代码注释里写明了实测依据与代价（放弃 WebGPU 性能上限；`navigator.gpu` 有而 WebGL 无的设备实践上不存在，
+     且 T8p 的降级页判定条件是"WebGL 与 WebGPU **都**不可用"，保持原样即可覆盖）。
+
+  2. **Toast 文案统一到 `ui/strings.js`（人工裁定）**。实现路径：让 `voiceController` 把**动作计划**一并 emit
+     （新增快照字段 `actions`，纯增量），接线层据此查 T4 的模板表——**与 UI 按钮/3D 点击用的是同一张表**；
+     计划为空或形态超模板覆盖（复合指令、多动作）时回退 `已执行：<回执>`。
+     三通道联调实测：**② Toast 文案完全一致 由 FAIL 转 PASS**。
+     边界说明：语音的 `reply`（用于**语音播报与字幕**）仍保留「已执行：」前缀——播报有语音味更好，
+     而 Toast 是三条通道**共用的反馈面**，故按模板统一。
+
+  3. **`base: './'` 的真实收益与 `file://` 的硬限制**：
+     - 收益已验证：产物在**任意子路径**下工作。用自建静态服务器在 `http://127.0.0.1:4321/app/dist/`
+       （模拟 GitHub Pages 的 `/<repo>/`）实测：标题/中文界面正确、`canvas` 1 个、`__carDisplayStore` 就绪、
+       渲染器 `webgl`、`parts` 10 / `lights` 2 / `hitTargets` 12、**0 异常**。
+     - **`file://` 双击打开 dist 不可用**：Chrome 对 `file://` 源直接以 CORS 拒绝加载 ES module 与 CSS
+       （`Access to script ... has been blocked by CORS policy: Cross origin requests are only supported for
+       protocol schemes: ... http, https`）。这是**浏览器安全策略，与 base 无关**；roadmap §11.1 T10a 写的
+       "dist 可离线打开"对 module 形态的 Vite 产物**不可能成立**（除非引入单文件内联插件 = 新增依赖，违反依赖冻结）。
+       **处置：把交付口径改为"任意静态服务器托管（含子路径）"，并在 `readme.md` / `release-notes.md` 的"已知限制"里写明。**
+
+  4. **一次自测工具缺陷导致差点误报**：dist 下字节读数始终为 0，一度疑似"产物态缺陷"。
+     根因是**我自建的静态服务器**在 `writeHead()` 后 `end(buffer)` 走了 chunked 编码、**没发 `Content-Length`**，
+     而 three 的 `FileLoader` 只在有该头时才上报下载进度（`event.total` 为 0 → `reportInitialTransfer` 提前返回）。
+     补上 `Content-Length` 后 dist 子路径下读数正常（**80.6% → 100%，22671680 字节**）。
+     **真实静态托管（Pages / Vercel / nginx）都会带该头，故非产物问题。**
+
+  5. **GitHub Pages workflow 采用手动触发**：T1 当初刻意不复制 FormDrive 的 workflow，理由是
+     "目标仓 Pages 未配置时 push 触发会必然失败刷红"。T10a 需交付该产物又不能引入噪声，
+     故用 `workflow_dispatch`，并在文件头写明"待 Settings → Pages 设为 GitHub Actions 后手动跑一次，
+     之后可改回 push 自动部署"。**需人工完成 Pages 设置**，已登记人工配置区。
+
+  6. **未把 `voice.sandbox.html` 加进构建输入**（T6 曾建议由 T8 或 T10a 决定）：主页面已含完整语音入口，
+     沙盒页是开发/自测件，打进 dist 只会增加产物体积与维护面。如需给手机真机做语音调试页，再由 T10b 决定。
+
+- **自测结果**：
+  - `npm run build`：✅ **652 modules**（强制 WebGL 后少 1 个）。
+  - 三通道联调：① 同一 store PASS、**② Toast 文案一致 PASS**（此前 FAIL）、③ 跨阈值耗时 148–166 / 1031–1183 / 2539–2578 ms，
+    差值落在 CDP 采样往返的分辨率内（每次采样 1 个往返约 30–60ms），且三条通道**只存在一条动画实现**。
+  - 强制 WebGL 后整机自检（dev）：`renderer: webgl`、parts 10、lights 2、hitTargets 12、`perf.tier: high`、
+    `loading.sceneReady: true`、面板/语音/跳过导航齐、**errorTotal 0**。
+  - dist 子路径（`http://127.0.0.1:4321/app/dist/`）：同上全部通过 + 字节读数 22671680。
+  - `vercel.json` 为合法 JSON；workflow 含 `workflow_dispatch`。
+- **commit**：`8d20840`（WebGL + Toast 统一）、`75aab8a`（T10a）
+- **遗留项**：
+  1. **性能实测与调参**（人工裁定"先不管帧率，先把功能做完"）：留到真机阶段一次性做。
+  2. **T9 脚本侧问题**未修（`verify-pick`/`verify-camera` 过早探测误 SKIP、`verify-parts` 采样竞态与同值断言缺陷）——归 T9。
+  3. **GitHub Pages 的 Source 设置**需人工在仓库 Settings 里完成（见人工配置区）。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -1118,3 +1187,7 @@
 | 29 | **移动端「点击车模控车」曾被完全吞掉（已修）** | `usePartPick` 除契约阈值外还有一条「手势期间相机是否被带动」的硬否决；OrbitControls 的 `enableDamping` 使相机位移成为**手势时长的函数**（实测同样 2px：127ms→0.109、265ms→0.19），该否决退化成"约 150ms 以上一律不算点按"，真机上不可用。已移除该否决，点按判据回到契约的 6px/300ms。**真机复核仍建议保留**：手机 Chrome 上手指按压时长分布与 headless 触摸模拟不完全一致。 | 已修（建议真机复核） |
 | 30 | **竖屏车模曾被裁切（已修）** | three 的 `fov` 是垂直视角，390×844 下水平视角仅 17.1°、可视宽 3.15m < 车长 4.7m。已加 `responsiveCameraScale()` 做"只放不缩"的视口补偿（横屏系数恒为 1，桌面行为不变）。**真机复核**：请确认手机上四预设与拖拽手感可接受（距离 ×1.8 后旋转灵敏度同比下降，属预期）。 | 已修（建议真机复核） |
 | 31 | **T3 的 `useVehicleRoot` 信号 1 已失效** | 信号 1 读 `globalThis.__formdriveModelScene`，而 T5 重写 `VehicleModel` 时删掉了这个 legacy 调试全局；倒影实际靠信号 2（mesh 最多的子树）生效（已实测确认倒影正常）。已在注释中标注，**未改 T3 模块**。若要彻底清理，可由 T3 侧删掉信号 1 分支。 | 待处理（低优先，不影响功能） |
+| 32 | **GitHub Pages 的 Source 需人工设置** | `.github/workflows/deploy-pages.yml` 已备好，但刻意用 `workflow_dispatch` **手动触发**（理由见记录 T8-05 问题 5）。启用步骤：仓库 Settings → Pages → Source 选 **GitHub Actions** → 到 Actions 页手动跑一次 `Deploy to GitHub Pages`。完成后可把 workflow 的 `on:` 改回 push 自动部署。 | 待处理（需人工） |
+| 33 | **`file://` 双击打开 dist 不可用（口径修正）** | Chrome 对 `file://` 源以 CORS 拒绝加载 ES module 与 CSS，属浏览器安全策略、与 `base` 无关；roadmap §11.1 T10a 写的「dist 可离线打开」对 module 形态的 Vite 产物不可能成立（除非引入单文件内联插件=新增依赖，违反依赖冻结）。**已把交付口径改为"任意静态服务器托管（含子路径）"并写进 readme/release-notes 的已知限制**；子路径托管已实测通过。请确认该口径修正。 | 待确认（口径修正） |
+| 34 | **真机性能实测与调参** | 人工裁定「先不管帧率，先把功能做完」，故 dpr 上限、反射地面/阴影/扫光降档阈值的真机调参留到真机阶段一次性做。需要：一台正常桌面机（复核 ≥55fps）与一台手机（复核 ≥30fps + 触摸手感）。 | 待处理（需真机） |
+| 35 | **真机复核触摸点按与竖屏构图** | 两项移动端修复（触摸点按判据、竖屏机位补偿）已在 headless 触摸模拟下逐条实测通过，但**真机手指按压时长分布与合成触摸不完全一致**，建议真机确认手感。 | 待处理（需真机） |
