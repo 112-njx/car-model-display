@@ -82,6 +82,52 @@
 
 ---
 
+## Wave 1 · T4 中文中控 UI（面板 / Toast / 加载页 / 主题）
+
+### 记录 05 · 2026-09-22 · T4 A 段：组件骨架 + 中文文案表 + 深色中控主题
+
+- **轮次目标**：A 段「契约无关阶段」——在 `contract-v1` 未就绪时先把与 store 无关的真实工作量做完：4 个组件骨架（props 驱动）、中文文案表、`tokens.css` 深色中控主题、响应式布局雏形、中文加载页与手势提示。
+- **工作区**：`git worktree add .claude/worktrees/wave1-t4 -b wave1/t4 main`（与其他 Agent 的 `wave1+t2`/`wave1+t5`/`wave1-t3` 同一约定，路径 `.claude/worktrees/`）。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/components/ui/strings.js` | 新增。中文文案表（界面文案唯一来源），供 T5/T6/T8 复用，保证同一动作在不同通道下反馈一致 |
+  | `app/src/components/ui/PartButton.jsx` | 新增。单个部件按钮，props 驱动，含车窗/车门/前备箱三种内联 SVG 图示 |
+  | `app/src/components/ui/ToastHost.jsx` | 新增。Toast 宿主，props 驱动，逐条自动消失 + 点击关闭 |
+  | `app/src/components/ui/LoadingScreen.jsx` | 新增。中文加载页，保留字节级进度条结构与 00–100 百分比读数，含超时/退场状态机 |
+  | `app/src/components/ui/ControlPanel.jsx` | 新增。中控面板：车辆状态标题 + 3 个部件分组（含组内全开/全关）+ 大灯/尾灯开关 + 视角按钮（复位/正面/侧面/细节）+ 环绕一周 + 待机自转 + 一键全部关闭 + 语音容器位 + 手势提示 |
+  | `app/tokens.css` | 重写。深灰蓝黑底（`oklch(14% .022 252)`）+ 青色 `--color-accent: oklch(84% .12 195)` / 冰蓝 `--color-accent-2` 点缀 + 玻璃拟态材质；新增中文字体回退栈与 `--tap-min` 触控尺寸；**保留全部既有 token 名**（T3/T6/T8 只引用不重定义） |
+  | `app/src/style.css` | 重写。`cd-ui-` 前缀命名隔离；手机底部面板（<40rem 默认收起）/ 平板右下浮层（≥40rem）/ 桌面右侧侧栏（≥60rem）三档响应式；含 reduced-motion / reduced-transparency / backdrop-filter 降级 |
+- **关键决策**：
+  1. **`ui/**` 落位 `app/src/components/ui/`**。依据：§12.2 的 `scene/VehicleModel.jsx` 对应既有 `src/components/scene/`，故 `ui/**` 对应既有 `src/components/ui/`（FormDrive 原目录，被移除的 ControlDeck 等也在此）。未新建 `src/ui/`。
+  2. **组件一律 props 驱动、不读 store**（A 段纪律），但 props 形状与 §13.1/§13.2 字段一一对应，B 段接线为纯替换。
+  3. **`tokens.css` 保留全部既有 token 名**（仅重调数值），并保留已无消费方的 `--paint-*`。原因：T3（`cd-env-`）、T6（`cd-voice-`）正在并行写各自的 css，改名/删名会让它们静默失效。文件头已标注 `--paint-*` 待 T8 集成末段清理。
+  4. **加载页去掉 FormDrive 的 localStorage 跳过逻辑**（`formdrive:studio-ready:v1` 键）。原因：该键名是英文品牌残留，且与新加载页的"每次进入都展示中控启动"定位冲突；改为可选 `bypass` prop，由宿主决定（见《挂载说明》）。
+  5. **加载页去掉 `WebGPU / WEBGL`、`FORMDRIVE © 2026` 等英文遥测文案**，改为「实时渲染通道」与「首次载入约 22 MB」。理由：DoD 要求"界面无英文残留"；`WebGPU/WebGL` 虽是技术专名，但非必要信息。
+  6. **面板初始展开态按断点决定**（≥40rem 展开、手机收起），与 `style.css` 断点一致，宿主无需传参。
+  7. **语音容器位渲染中文占位**（虚线框 + 「语音控制」），T8 传入 `voiceSlot` 后占位自动消失；本任务不实现任何语音逻辑。
+- **自测结果**：
+  - `npm run build`：✅ 625 modules，4.50s（与 T1 基线一致——新组件此时尚未被 import，被 tree-shake）。自带警告（Circular chunk / empty chunk / >500kB）均为 FormDrive 原有。
+  - **真实浏览器实测（Edge 153 headless + CDP，脚本在仓库外 `%TEMP%/t4-selftest/`）**：临时改写 `App.jsx` 挂载（**该改动不入交付，已还原并另存自测件**），用 §13.1 形状的假数据驱动，**42/42 项断言全部通过**：
+    - **375×812 手机视口**：无横向溢出元素（逐元素 `getBoundingClientRect` 越界扫描）；面板贴合视口（l=12, r=363）；默认收起（面板高 109px）；点击展开后 `body` 高 435px；10 个部件按钮全部渲染；无标签截断（`scrollWidth > clientWidth` 扫描为空）。
+    - **交互链路**：点「左前车窗」→ `aria-pressed` 翻转 + Toast「左前车窗已打开」+ 状态摘要「已开启 1 / 10 个部件」；点「车窗 全开」→ 组计数 4/4 + Toast「车窗已全部打开」；点大灯开关 → `aria-checked=true` + Toast「大灯已开启」；点「侧面」→ 激活态切换 + Toast「视角已切换到侧面」；点「环绕一周」→ Toast「正在环绕车辆一周」；Toast 3.2s 后自动消失；点「全部关闭」→ 部件与灯光全复位 + 状态摘要「车辆已全部关闭」；点 Toast 本体可立即关闭。
+    - **中文加载页**：品牌「智能座舱」、大标题「车形即现」、状态文案随进度在「正在准备资源→正在加载车身模型→正在校准材质」间切换、`role="progressbar"` 的 `aria-valuenow` 实测推进 8 → 43、就绪后自动退场。
+    - **1440×900 桌面视口**：面板默认展开、位于右侧侧栏（l=1016, r=1416）、完全在视口内；手势提示可见；语音容器位存在；内部滚动生效（scrollHeight 1020 > clientHeight 646）。
+    - **英文残留扫描**：375 与 1440 两个视口逐文本节点扫描 `[A-Za-z]{2,}`，仅剩专名 `Tesla`/`Model` 与单位 `MB`，**界面无英文文案残留**。
+    - **控制台 0 错误**。
+  - **视觉确认（人工看图）**：截图 `%TEMP%/t4-selftest/{375-loading,375-collapsed,375-expanded,375-interacted,1440-desktop}.png`。深色蓝黑底 + 青色点缀 + 玻璃卡片渲染正确，中文排版无截断、无换行错位；部件按钮 2 列网格、分组计数青色高亮、开启态青色描边发光均正常。
+  - **一次误判纠正**：桌面截图中「大灯」开关疑似呈开启态，用探针脚本核实 `aria-checked="false"`、滑块距左 5px（`switchW=52`），确认是低分辨率读图误差，**非 bug**。
+- **commit**：`0c21106`（已 push 到 `origin/wave1/t4`）
+- **遗留项**：
+  1. **B 段未开始**：A 段完成时 `origin/contract-v1` 已推送（T2 提交 `0387166`），已 `git fetch` 确认内容齐备（`carConfig.js` / `useCarStore.js` / `auditHooks.js` / 兼容 shim / `CHANGELOG.md` 0001–0009）。**注意：T2 的 DoD 要求产出 `docs/contracts/store-contract.md`，该文件尚未出现，而 `useCarStore.js` 已引用它**——已上报（见人工配置区）。
+  2. **加载页字节级读数缺口**：§13.2 的 state 片未收录 T1 基线的 5 个加载态字段，字节读数取不到 → 已登记 `docs/contracts/CHANGELOG.md` 0010，待 S1 裁定。
+  3. **旧配置器组件的删除与 `App.jsx` 禁改冲突**：删除 `ControlDeck` 等 7 个组件会让未改动的 `App.jsx` 编译失败（S2 要求 build 全绿）。已上报（见人工配置区），待裁定交付形态。
+  4. **`index.html` 归属未定**：首屏 boot 加载页、`<title>`、`lang="en"`、meta description 全为英文，但 §12.2 未把 `index.html` 划给任何 Wave 1 Agent。已上报。
+  5. **`HeroCopy` 过时英文文案**（T1 记录 03 遗留 5）随该组件在 B 段一并移除。
+  6. `--paint-*` token 与 legacy `studioConfig.js` 的清理归 T8 集成末段（与 T2 CHANGELOG 0008/0009 同批）。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -92,3 +138,7 @@
 | 2 | 手机真机同局域网联调 | 开发机 WLAN 地址 `10.14.6.9`（SSID `henu 3`，网络类别 Public）。Public 防火墙配置文件**已关闭**且已存在 2 条 `Node.js JavaScript Runtime` 入站放行规则，**无需额外放行端口**。手机需连同一 Wi-Fi 后访问 `http://10.14.6.9:5173/`。若校园网开启 AP 客户端隔离，手机将无法访问，此时请改用手机热点。**AI 无法代做真机验收**，请人工确认"仅 Tesla 一台车 / 无车型切换入口 / 四门四窗前后备箱灯光可用 / 触摸拖拽旋转可用"。 | 待处理（需真机） |
 | 3 | 加载页字节 MB 读数 | 见记录 04，等待人工决策是否修 `VehicleModel.jsx:81`。 | 待处理 |
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
+| 5 | **T4 交付形态裁定**：旧配置器组件的删除与 `App.jsx` 禁改冲突 | §11.1 T4 要求"移除 Navigation/HeroCopy/VehicleSelector/ControlDeck/InfoDialog 等配置器组件"，但 §12.1 规定"Wave 1 一律不改 `App.jsx`"，而 `App.jsx` 正 import 着这 7 个组件——**删除文件 = build 失败**，与 S2 准入"build 全绿"直接冲突。三条出路：**(A) T4 删除组件 + 交付一处最小 `App.jsx` 改动**（仅摘除悬空 import 与已删组件挂载，不动其余；T8 反正要重写 `App.jsx`，冲突面单文件且必然发生）——**T4 建议此案**；(B) 组件文件保留不删，删除动作并入 T8 的 `App.jsx` 重写步（严格合规，但 T4 的"移除"未落地）；(C) 7 个旧文件改为 store 连接的 re-export shim（`App.jsx` 零改动即可渲染新中文 UI，但留下 T8 必须清理的间接层）。**未裁定前 T4 不删任何文件**。 | **待人工裁定** |
+| 6 | **`index.html` 归属** | 首屏 boot 加载页（`FORMDRIVE` / `REALTIME AUTOMOTIVE STUDIO` / `Shape takes form.` / `PREPARING INTERFACE`）、`<title>`、`lang="en"`、meta description 全为英文，且 boot 加载页是用户看到的第一屏——DoD「界面无英文残留」无法只靠 `ui/**` 达成。但 §12.2 文件独占矩阵**未把 `index.html` 划给任何 Wave 1 Agent**（"工程配置/package.json/Vite" 一行的 T4 列为 `–`）。请裁定：`index.html` 归 T4（中文化 boot 页 + `lang="zh-CN"` + 中文 title/description）还是归 T10a/T8。 | **待人工裁定** |
+| 7 | **加载页字节级读数的契约字段缺口** | §11.1 T4 要求"保留字节级加载进度"，但 §13.2 的 state 片未收录 T1 基线的 5 个加载态字段（`renderer` / `initialSceneReady` / `initialAssetProgress` / `initialAssetLoadedBytes` / `initialAssetTotalBytes`），而字节读数由 `useVehicleGLTF(url, trackInitialTransfer)` 的传输回调写入、调用点在 T5 的 `VehicleModel.jsx`。drei `useProgress` 只给条目数不给字节 → 新加载条会退化为 0→100 跳变。已登记 `docs/contracts/CHANGELOG.md` **0010**（建议 store 只增 `loading: { sceneReady, progress, loadedBytes, totalBytes }`，T5 写入、T4 消费），请 S1 裁定。 | **待人工裁定（S1）** |
+| 8 | `docs/contracts/store-contract.md` 缺失 | T2 的 `contract-v1`（`0387166`）已含 `carConfig.js` / `useCarStore.js` / `auditHooks.js` / shim / `CHANGELOG.md`，但 §11.1 T2 的 DoD 明确要求产出 `docs/contracts/store-contract.md`，且 `useCarStore.js` 正文已两处引用它（"见 docs/contracts/store-contract.md"）。该文档是 S1 评审对象，缺失会导致 S1 无法逐条比对。请提醒 T2 补交。 | **待处理（T2）** |
