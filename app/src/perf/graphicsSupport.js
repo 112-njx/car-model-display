@@ -48,9 +48,8 @@ export function probeWebGL() {
     return webglCache;
   }
 
-  let canvas = null;
   try {
-    canvas = document.createElement("canvas");
+    const canvas = document.createElement("canvas");
     const gl2 = canvas.getContext("webgl2");
     if (gl2) {
       releaseContext(gl2);
@@ -68,8 +67,6 @@ export function probeWebGL() {
   } catch (error) {
     webglCache = { ok: false, api: null, reason: `throw:${error?.message ?? error}` };
     return webglCache;
-  } finally {
-    canvas = null;
   }
 }
 

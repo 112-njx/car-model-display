@@ -106,6 +106,10 @@ const { reflector, shadow, sweepLight, dprMax, gridSegments, tier } = useDeviceT
   `installAuditHooks(carStore)` 安装。T8 集成后 store 必然被引入，无需额外处理。
 - `fps` 是最近 `windowCount` 个采样窗口的均值，1 位小数；页面在后台或场景预热期内不产出样本，
   此时读到的是上一个有效值。
+- **`dpr` 的语义（§13.3 未写明，T8p 的实现取前者，如需改口径请走 §13.4）**：报的是
+  `window.devicePixelRatio` 的**实时设备像素比**，不是被 `dprMax` 钳制后的**实际渲染比**。
+  理由是 `tier` 已经蕴含 `dprMax`，报原始设备值信息量更大（能同时看出"设备是多少"和"我们压到多少"）。
+  实际渲染比 = `min(dpr, dprMax)`，需要时自行推算。**T9 若写断言，请按此口径。**
 
 ---
 
