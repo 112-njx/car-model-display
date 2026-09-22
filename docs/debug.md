@@ -201,3 +201,62 @@
   2. CockpitEnvironment 的 `qualityFeatures` prop 由 T8 接 T8p `PerfProvider` 时传入（挂载说明 §3）。
   3. `StudioEnvironment.jsx` 保留待 T8 挂载时替换删除。
   4. HeadlightRig 光束跟随依赖 T5 VehicleModel 注册的钩子，T8 合并 T5 后需联调确认。
+
+### 记录 07 · 2026-09-22 · T3 视觉缺陷定位与修复（drei 反射地面弃用 + 贴图重编译 bug）
+
+- **轮次目标**：恢复 T3 Agent 会话后，用真实浏览器对 A 段场景做视觉验收，定位并修复渲染缺陷；复核挂载说明中已被推翻的选型描述。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `src/components/scene/ground/{TechGrid,ReflectiveFloor,ContactShadow,SweepLight}.jsx` | **贴图就绪前 `return null`**（修复材质未重编译导致整片不透明） |
+  | `src/components/scene/ground/ReflectiveFloor.jsx` | 地面改 `MeshBasicMaterial`（不受光）；倒影材质逐网格独立实例 + effect 内创建/释放；`receiveShadow` prop 移除 |
+  | `src/components/scene/ground/*.jsx` | 各网格加 `cd-env-*` 的 `name`（调试/T9 定位用） |
+  | `src/components/scene/CockpitEnvironment.jsx` | 同步移除 `ReflectiveFloor` 的 `receiveShadow` 传参 |
+  | `docs/t3-scene-mount-guide.md` | 更正 §1/§6 的反射地面选型描述；新增 §6 三个坑、§7 遗留、§8 自测记录 |
+  | `docs/debug.md` | 本条记录 |
+- **关键决策 / 问题（现象 → 根因 → 修法）**：
+
+  1. **drei `MeshReflectorMaterial` 在本工程默认路径下每帧崩溃（选型推翻）**
+     - 现象：挂上后每帧抛 `TypeError: Cannot read properties of undefined (reading 'buffers')`，R3F 渲染循环被打死、场景冻结。
+     - 根因：`StudioCanvas.jsx:16` 在 `navigator.gpu` 存在时走 `WebGPURenderer`（桌面 Edge/Chrome 默认路径）；而 `drei/core/MeshReflectorMaterial.js:162` 调 `gl.state.buffers.depth.setMask(true)`，`gl.state` 是 `WebGLRenderer` 的内部状态对象，WebGPU 后端没有。佐证：未压缩的 `three.webgpu.js` 中 `onBeforeCompile` 出现 **0 次**（`onBeforeRender` 6 次），该材质靠 `onBeforeCompile` 注入着色器，WebGPU 下注定无效。
+     - 修法：**停下上报，经人工拍板改「镜像倒影」**（克隆车模根节点 Y 取反置于地面下）。纯几何、双后端安全、零新增依赖。
+
+  2. **镜像倒影共享单材质 → WebGPU 绑定缓存被击穿**
+     - 现象：倒影渲染时抛 `TypeError: Invalid value used as weak map key`（栈 `Bindings._init → Textures.updateTexture → WeakMap.set(undefined)`）。
+     - 根因：把同一个 `MeshBasicMaterial` 实例挂到 176 个克隆网格上，而这些网格几何体属性集不一致（有无 UV/顶点色），three WebGPU 后端按「材质 × 几何」建管线时缓存错乱。
+     - 修法：**每个克隆网格一个材质实例**；材质在 effect 内创建、同一 cleanup 内释放（`useMemo` + cleanup 会被 `<StrictMode>` 的 effect 双调用释放掉仍被引用的实例）。逐网格独立后该错误消失。
+
+  3. **贴图在材质编译后赋值不触发重编译 → 地面/网格整片不透明（本轮最隐蔽的 bug）**
+     - 现象：地面渲染成一大块不透明青灰片，把下方倒影完全盖死；网格渲染成 `color`(白)×0.34 的实心灰片铺满整个圆盘。用「地面染红 + 网格染蓝」对照法确认两者都是**完全不透明**的整片。
+     - 排查过程：先误判为「高光过强」（调整 metalness/roughness 无效）→ 再误判为「灯光漫反射」（地面改不受光后**仍是灰片**）→ 逐层隐藏网格（地面/网格各自隐藏后另一片仍在）→ 染红染蓝确认两者都失效 → **查询运行时材质与纹理真值**：材质 `color=05080c`、`alphaMap=true`；网格贴图 `corner = (0,0,0,0)`（alpha 正确为 0）。**纹理本身完全正确，是着色器没用它**。
+     - 根因：`useCanvasTexture()` 首帧返回 `null`，材质先以「无 `map`/`alphaMap`」编译一次；之后赋值贴图**不会触发着色器重编译**，`USE_MAP` / `USE_ALPHAMAP` 宏始终未定义 → 贴图的颜色与 alpha 被整片忽略。
+     - 修法：`TechGrid` / `ReflectiveFloor` / `ContactShadow` / `SweepLight` 一律 `if (!texture) return null;`，贴图就绪后才渲染网格。已写入挂载说明 §6.2 作为集成期约定。
+
+  4. **地面受光在数学上必然发灰（设计修正）**
+     - 现象：地面（`meshStandardMaterial`，`#05080c`）渲染成约 40% 灰的亮面。
+     - 根因：四盏平行光总辐照度约 7.4，反照率 0.02 线性 → 漫反射 `0.02 × 7.4 ≈ 0.15`，经 ACES + sRGB 编码后约 40% 灰。车身高光又必须靠这些强光，不能削光。
+     - 修法：地面改 **`MeshBasicMaterial`（不受光）**，恒定深色 + `alphaMap` 径向渐隐，镜面感完全交给镜像倒影。代价：地面不接收阴影贴图，「车贴地」由 `ContactShadow` 与模型自带烘焙阴影承担。
+
+  5. **车模 GLB 自带烘焙阴影网格（非 T3 引入）**
+     - 现象：车侧地面有一块形状明显的暗斑。逐一隐藏 T3 的全部地面网格后仍在。
+     - 根因：GLB 内含 `JUST_BLACK_JUST_BLACK0_0` 等黑壳网格；T1 基线同样存在，在深色地面上更显眼。
+     - 处置：`VehicleModel.jsx` 是 T5 独占文件，**T3 不越界处理**，登记为遗留项交 T5/T8（挂载说明 §7.2）。
+
+  6. **本机 headless WebGPU 后端不稳定（对照基线确认）**
+     - 现象：headless Edge 下 WebGPU 持续报 `No bind group set at group index 1` / `Invalid CommandBuffer`，且错误对象会在背景 quad 与车模网格之间漂移。
+     - 对照：**T1 基线未改动的 App 同样报 500+ 条同类警告**；强制走 WebGL（页面脚本执行前抹掉 `navigator.gpu`）后错误**归零**。
+     - 结论：这是 headless 软件渲染的环境问题，非 T3 代码缺陷。**T3 浏览器自测以 WebGL 通道为准**；WebGPU 真机表现本环境无法验证，已在挂载说明 §7.5 提示 T8。
+
+- **自测结果**：
+  - `npm run build`：✅ 通过（14.85s）。
+  - 浏览器实测（Edge + CDP，WebGL 通道）：**0 异常**；运行期 `reflector` true→false→true、`quality` high→low→high 多轮切换均 0 异常、渲染循环不中断。
+  - 视觉：深色底 + 科技网格径向淡出 + 双环形光带 + 车身下方清晰倒影 + 扫光 + 车身高光，对标中控大屏通过。
+  - 帧率：headless 软件渲染绝对值不具参考性（同机 8 个并行 Agent 的 dev server 有干扰）；相对成本：关反射后约为开反射的 2–3 倍。**桌面 60fps 真机确认归 T8**。
+  - 自测临时改动（`App.jsx` 指向工装、`src/__t3harness.jsx`）**已全部还原/删除，未交付**。
+- **commit**：`448677d`
+- **遗留项**：
+  1. `ENV_COLORS` 色值仍为占位，T8 按 T4 `tokens.css` 收口。
+  2. GLB 烘焙阴影网格待 T5/T8 过滤（挂载说明 §7.2）。
+  3. HeadlightRig 的 `active` 依赖 `measuredAnchor`，若 T5 重写 VehicleModel 后不再写 `__formdriveHeadlightAnchors`，光束会永不亮起（非回退到固定锚点）—— 已写入挂载说明 §5 提示 T8 联调。
+  4. WebGPU 真机表现未验证（挂载说明 §7.5）。
+  5. `StudioEnvironment.jsx` 待 T8 删除。
