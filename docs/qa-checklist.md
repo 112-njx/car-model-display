@@ -19,6 +19,16 @@
 | dev（推荐验收用） | `npm run dev -- --port 5173 --strictPort` | `http://127.0.0.1:5173/` | **必须带 `--strictPort`**：本机 5173 常被其他 Vite 实例占用，端口被顶掉后会自动落到 5174，而那个实例上没有你的改动 —— 会得到**假绿**（现象与根因见 `docs/debug.md` T2 记录 06） |
 | dist（交付形态） | `npm run build && npm run preview -- --port 4173 --strictPort` | `http://127.0.0.1:4173/` | 验「产物形态」时用；`base:'./'` 生效后 dist 也可直接双击打开 |
 
+> **⚠️ 跑任何脚本/验收前，必须先确证「这个端口上是我的实例」**（T9 记录 T9-02 就踩了这个坑，得到一次假阴性）：
+> Vite 对**未知路径**返回 `200 + index.html`，所以「HTTP 200」「页面能打开」都**不能**证明打到了自己的工程。用一条 `curl` 核对即可：
+>
+> ```bash
+> # 应返回 JS（text/javascript），而不是 text/html 兜底页
+> curl -s -o /dev/null -w "%{size_download} %{content_type}\n" http://127.0.0.1:5173/src/config/carConfig.js
+> ```
+>
+> 若返回 `2888 B text/html`（index.html 兜底），说明该端口是**别的实例**（很可能是 T2 之前的旧工程，没有 `carConfig.js`），此时页面上不会有 `window.__carDisplayStore`，脚本会以「钩子缺失」失败——那是环境错，不是被测代码错。
+
 ### 1.2 起一个带调试端口的浏览器（自动化脚本的前提）
 
 脚本**不启动浏览器**，只连接一个已开调试端口的 Chrome/Edge。桌面/无头均可，无需关掉你正在用的窗口：

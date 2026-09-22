@@ -202,6 +202,29 @@
   3. Wave 2 的验收执行段（随 T8 每次合并滚动跑脚本 + 双端验收 + 产出 `qa-report.md` + 回归）由本 Agent 继续承担，清单与格式已在 `docs/qa-checklist.md` 就位。
   4. 手机真机语音项有**硬性前提**：Web Speech API 要求安全上下文，局域网 `http://<IP>` 下手机 Chrome 拒绝麦克风，须等 T10b 的 https URL；已在 `qa-checklist.md` §3.2 B11 标为「阻塞前提」，验收时不得标「通过」。
 
+### 记录 T9-02 · 2026-09-22 · B 段首跑：钩子缺失，经诊断为「打错了服务端」；**该步骤经人工指示跳过**
+
+- **轮次目标**：B 段——在 `contract-v1` 上跑通 `verify-parts` / `verify-voice` 的契约层断言（Wave 1 出口的最后一环）。
+- **改动文件**：无（本轮只做诊断，未改任何交付物）。
+- **关键决策 / 问题**：
+  1. **现象**：人工起好调试端口（9222 就绪）后，`node scripts/verify-parts.mjs --base-url=http://127.0.0.1:5181/` 在 30s 后失败——`window.__carDisplayStore` / `__carDisplaySceneAudit` **始终不存在**（最后观测值 `false`）。脚本按设计打印了可读的等待超时并退出码 1，**没有静默假绿**。
+  2. **诊断过程**：仓库外探针连上 9222 打开 5181 页面，读到——`readyState=complete`、标题 `FORMDRIVE — Interactive Automotive Studio`、`canvas=1`、42 个资源**无一 404**，但三个钩子全为 `undefined`；页面文案仍是英文 `Choose a car, change its finish…`（T4 尚未接管的旧 UI）。进一步用 `curl` 逐路径核对响应体：
+     | 路径 | 响应 |
+     | --- | --- |
+     | `/src/main.jsx` | `1315 B`、`text/javascript`（**真实产物**） |
+     | `/src/config/carConfig.js` | `2888 B`、`text/html`（**index.html 兜底**） |
+     | `/src/state/useCarStore.js` | `2888 B`、`text/html`（**index.html 兜底**） |
+     而这两个文件在本 worktree 磁盘上确实存在（`carConfig.js 7486 B`、`useCarStore.js 6060 B`，均为 contract-v1 版本）。**结论：5181 上应答的服务端根目录是 T2 之前的旧工程**（有 `main.jsx`、无 `carConfig.js`），因此页面里根本不存在 T2 的 store 与钩子——**这是一次「打错服务端」造成的假阴性，不是脚本缺陷**。这正是 T2 记录 06「端口陷阱」的同一类坑（Vite 对未知路径返 `200 + index.html`，状态码与"看起来有内容"都不能证明打到了自己的实例）。
+  3. **未查清的部分（如实记录）**：我的 `npx vite --port 5181 --strictPort` 自报「ready on 5181」，但应答内容并非该 worktree 的产物；**5181 究竟被谁占用/为何被顶替，未完成归因**——人工指示在此处跳过该步骤，故不再深挖。
+  4. **附带发现（与本轮无关，供 T8 参考）**：无头 Edge 下页面持续抛 `TypeError: Invalid value used as weak map key`（`three_webgpu.js` 的 `Textures.updateTexture` → `Bindings._init`），与 T1 记录 04 / `77dc507` 提到的「WebGPU 既有异常」同源，非本轮引入。
+  5. **人工裁定**：**跳过该步骤**。四个脚本对真实契约页面的执行自测因此**未完成**，转入 Wave 2 随 T8 集成时补做。
+- **自测结果**：本轮无新增通过项。已确证的仅有：脚本在「钩子缺失」时**行为正确**（明确报错 + 退出码 1 + 可操作提示，不假绿），以及 CDP 链路本身可用（9222 探测、开标签页、求值、事件捕获全部工作）。
+- **commit**：无（本轮仅记录）
+- **遗留项**：
+  1. **四个脚本从未在真实契约页面上执行过**——这是 Wave 1 出口未闭合的部分，也是当前最大的未知风险：脚本里可能存在只有真跑才暴露的缺陷（时序、选择器、`Runtime.evaluate` 序列化等）。**Wave 2 首件事就是在 T8 集成页面上跑四个脚本并修掉暴露的问题。**
+  2. 跑脚本前必须**先确证 dev server 是自己的实例**：用 `curl` 核对一个 contract-v1 专有路径（如 `/src/config/carConfig.js`）返回的是 JS 而非 `text/html`，否则一定得到假阴性/假阳性。此纪律已写入 `docs/qa-checklist.md` §1.1。
+  3. 人工配置区 #7（无头浏览器放行）已由人工执行过一次；若该实例被关闭，需重新启动。
+
 ---
 
 ## 需要项目人工配置的地方
