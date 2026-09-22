@@ -151,7 +151,7 @@
   - 6 个场景组件模块静态加载 OK；
   - shim 镜像正确：`{leftDoor:true, rearRightWindow:true, rightDoor:false, headlights:true, cameraView:'front'}`（由 carStore 驱动后读出）。
   - 说明：`ControlDeck` 的部件网格与灯光开关位于 `parts` / `studio` 页签，默认 `paint` 页签不渲染，其接线正确性由契约层断言覆盖（shim 双向映射 19 项）。
-- **commit**：`⟨本次提交，提交后补记⟩`
+- **commit**：`0a33b2a`
 - **遗留项**：渲染层实测（部件动画 / 灯光发光 / 相机位移）仍待浏览器放行，见人工配置区 #5。
 
 ---
