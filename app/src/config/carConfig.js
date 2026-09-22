@@ -109,3 +109,13 @@ export const MODEL_MATERIALS = {
   headlights: ["right_front_light", "left_front_light", "foglight_r", "foglight_l"],
   taillights: ["right_rear_light", "left_rear_light", "breaklight_l"],
 };
+
+// 车身固定外观（T8 增补，见 docs/contracts/CHANGELOG.md 0014）
+// §3.2 已裁掉涂装/轮毂配置器，故外观不再由用户选择，固化为契约常量。
+// 取值 = T1 基线 legacy studioConfig 的默认值 PAINTS.ivory / finish:12 / WHEELS.turbine，
+// **零行为变化**；用途是让 T5 的 VehicleModel 在兼容 shim 删除后仍有唯一来源。
+export const APPEARANCE = {
+  paint: { color: "#e5dcc4", metalness: 0.55 },
+  finish: 12,
+  wheel: { color: "#6f706d", roughness: 0.17 },
+};

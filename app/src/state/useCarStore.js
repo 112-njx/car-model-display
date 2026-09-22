@@ -48,6 +48,11 @@ export const useCarStore = create((set) => ({
   toast: [], // ToastItem[] = { id, text, level, ts }
   autoRotate: false,
   lastInteractionAt: Date.now(),
+  // 首屏加载进度片（T8 增补，见 docs/contracts/CHANGELOG.md 0013；原由兼容 shim 承载）
+  //   progress 初值刻意取 `null` 而非 0：消费方（T4 的 LoadingScreen）用 `??` 兜底，
+  //   未开始传输前应回落到 drei useProgress，而不是把进度条钉死在 0%。
+  //   sceneReady 由 VehicleModel 在首帧渲染后置 true。
+  loading: { sceneReady: false, progress: null, loadedBytes: 0, totalBytes: 0 },
 
   // ── 部件 actions ──
   setPart: (id, open) => {
@@ -97,6 +102,19 @@ export const useCarStore = create((set) => ({
   // ── 待机自转 ──
   setAutoRotate: (on) => set({ autoRotate: Boolean(on) }),
   bumpInteraction: () => set({ lastInteractionAt: Date.now() }),
+
+  // ── 首屏加载进度（T8 增补，见 CHANGELOG 0013）──
+  setLoadingProgress: ({ progress, loadedBytes, totalBytes }) =>
+    set((state) => ({
+      loading: {
+        ...state.loading,
+        progress: progress ?? state.loading.progress,
+        loadedBytes: loadedBytes ?? state.loading.loadedBytes,
+        totalBytes: totalBytes ?? state.loading.totalBytes,
+      },
+    })),
+  setLoadingSceneReady: (ready = true) =>
+    set((state) => ({ loading: { ...state.loading, sceneReady: Boolean(ready) } })),
 
   // ── 语音 actions ──
   setVoiceStatus: (status) => set((state) => ({ voice: { ...state.voice, status } })),

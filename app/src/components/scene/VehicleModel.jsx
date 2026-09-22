@@ -12,16 +12,15 @@
  *
  * 本文件是 roadmap §12.2 划给 T5 的独占文件（全 Wave 1 唯一修改方）。
  *
- * 过渡期说明：`PAINTS` / `WHEELS` 仍在 legacy `studioConfig.js`（CHANGELOG 0009，待 S1 裁定），
- * `initialSceneReady` 等加载页字段仍在兼容 shim `useStudioStore.js`（T8 集成末段删除 shim 时一并处理）。
+ * 过渡期说明（T8 集成期已收口）：车身外观改读契约常量 `carConfig.APPEARANCE`（CHANGELOG 0014）、
+ * 首屏加载进度改读 `useCarStore.loading`（CHANGELOG 0013），本文件**不再引用 legacy `studioConfig.js`
+ * 与兼容 shim `useStudioStore.js`**。
  */
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Box3, Color, Euler, MathUtils, Matrix4, Raycaster, Vector3 } from "three";
-import { PAINTS, WHEELS } from "../../config/studioConfig";
-import { INTERACTION, LIGHTS, MODEL_MATERIALS, MODEL_TRANSFORM, MODEL_URL, PARTS } from "../../config/carConfig";
+import { APPEARANCE, INTERACTION, LIGHTS, MODEL_MATERIALS, MODEL_TRANSFORM, MODEL_URL, PARTS } from "../../config/carConfig";
 import { useCarStore } from "../../state/useCarStore";
-import { useStudioStore } from "../../state/useStudioStore";
 import { useVehicleGLTF } from "../../hooks/useVehicleGLTF";
 import { registerSceneAuditSource } from "../../devtools/auditHooks";
 import { PartHitAreas, PartHoverHighlight, usePartHitAreas } from "../../interaction/PartHitAreas";
@@ -87,34 +86,35 @@ function measureHeadlightAnchors(lightObjects, transform) {
 }
 
 function VehicleModelInstance() {
-  const setInitialSceneReady = useStudioStore((store) => store.setInitialSceneReady);
-  const initialSceneReady = useStudioStore((store) => store.initialSceneReady);
-  const paint = useStudioStore((store) => store.paint);
-  const finish = useStudioStore((store) => store.finish);
-  const wheel = useStudioStore((store) => store.wheel);
+  const setLoadingSceneReady = useCarStore((store) => store.setLoadingSceneReady);
+  const sceneReady = useCarStore((store) => store.loading.sceneReady);
   const parts = useCarStore((store) => store.parts);
   const lights = useCarStore((store) => store.lights);
+  // 车身固定外观（§3.2 已裁掉涂装/轮毂配置器 → 契约常量，CHANGELOG 0014）
+  const paint = APPEARANCE.paint;
+  const finish = APPEARANCE.finish;
+  const wheel = APPEARANCE.wheel;
   const group = useRef();
   const headlightLevel = useRef(0);
   const tailLightLevel = useRef(0);
   const camera = useThree((store) => store.camera);
   const gl = useThree((store) => store.gl);
 
-  // 字节级加载进度追踪：T1 记录 04 登记为待人工决策（原条件 `vehicleId === "mustang"` 在单车裁剪后恒为 false）。
-  // 本轮**不擅自改变行为**，保持等价；人工确认（debug.md 人工配置区 #9）后改为 `!initialSceneReady` 即可开启。
-  const trackInitialTransfer = false;
-  const source = useVehicleGLTF(MODEL_URL, trackInitialTransfer && !initialSceneReady);
+  // 字节级加载进度追踪：T1 记录 04/05 经人工裁定「本轮修」，T5 重写本文件时按约定保持等价写法
+  // （`trackInitialTransfer && !sceneReady`，其中 trackInitialTransfer 恒真）。首屏就绪后停止追踪。
+  const trackInitialTransfer = true;
+  const source = useVehicleGLTF(MODEL_URL, trackInitialTransfer && !sceneReady);
 
   useEffect(() => {
     let finalFrame;
     const firstFrame = window.requestAnimationFrame(() => {
-      finalFrame = window.requestAnimationFrame(setInitialSceneReady);
+      finalFrame = window.requestAnimationFrame(setLoadingSceneReady);
     });
     return () => {
       window.cancelAnimationFrame(firstFrame);
       if (finalFrame) window.cancelAnimationFrame(finalFrame);
     };
-  }, [setInitialSceneReady]);
+  }, [setLoadingSceneReady]);
 
   const model = useMemo(() => {
     // All mutations belong to one fresh clone. This keeps rendered meshes,
@@ -214,7 +214,7 @@ function VehicleModelInstance() {
   }, [model.headlightAnchors]);
 
   useEffect(() => {
-    const preset = PAINTS[paint];
+    const preset = paint;
     model.materials.paint.forEach((material) => {
       material.color.set(preset.color);
       material.metalness = Math.min(preset.metalness, 0.55);
@@ -227,7 +227,7 @@ function VehicleModelInstance() {
   }, [paint, finish, model]);
 
   useEffect(() => {
-    const preset = WHEELS[wheel];
+    const preset = wheel;
     model.materials.rims.forEach((material) => {
       material.color.set(preset.color); material.metalness = 0.9; material.roughness = preset.roughness; material.needsUpdate = true;
     });
@@ -340,7 +340,7 @@ function VehicleModelInstance() {
       yaw: group.current.rotation.y - MODEL_TRANSFORM.rotation[1],
       moving: false,
     };
-    const livePaint = PAINTS[paint];
+    const livePaint = paint;
     model.materials.paint.forEach((material) => {
       material.color.set(livePaint.color);
       material.metalness = Math.min(livePaint.metalness, 0.55);
