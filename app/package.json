@@ -1,25 +1,24 @@
 {
-  "name": "formdrive-automotive-studio",
+  "name": "car-model-display",
   "version": "1.0.0",
-  "description": "An open-source real-time 3D automotive studio built with React Three Fiber and Three.js.",
+  "description": "3D 仿真车模 Demo：新能源中控大屏风格的车模展示，支持拖拽旋转、点击控车（车窗/车门/灯光）与语音控车。",
   "private": true,
-  "author": "Enes Kaymaz",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nesdesignco/FormDrive.git"
+    "url": "git+https://github.com/112-njx/car-model-display.git"
   },
   "bugs": {
-    "url": "https://github.com/nesdesignco/FormDrive/issues"
+    "url": "https://github.com/112-njx/car-model-display/issues"
   },
-  "homepage": "https://nesdesignco.github.io/FormDrive/",
   "keywords": [
     "threejs",
     "react-three-fiber",
     "webgpu",
     "webgl",
-    "3d-configurator",
-    "automotive"
+    "3d",
+    "automotive",
+    "car-configurator"
   ],
   "type": "module",
   "scripts": {
