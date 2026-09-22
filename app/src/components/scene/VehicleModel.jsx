@@ -120,7 +120,7 @@ function VehicleModelInstance() {
     // All mutations belong to one fresh clone. This keeps rendered meshes,
     // materials and moving-part pivots aligned when StrictMode re-runs memos.
     const scene = source.scene.clone(true);
-    const collections = { paint: new Set(), rims: new Set(), lights: new Set(), tailLights: new Set() };
+    const collections = { paint: new Set(), rims: new Set(), lights: new Set(), tailLights: new Set(), headLens: new Set(), tailLens: new Set() };
     const lightObjects = new Set();
     // T5: 灯光命中目标需要"按灯分组"的 mesh 集合（与 collections 同源，材质名匹配）
     const lightMeshSets = { headlight: new Set(), taillight: new Set() };
@@ -139,6 +139,10 @@ function VehicleModelInstance() {
         if (matchesAny(name, MODEL_MATERIALS.rims)) collections.rims.add(material);
         if (matchesAny(name, MODEL_MATERIALS.headlights)) { collections.lights.add(material); lightObjects.add(object); lightMeshSets.headlight.add(object); }
         if (matchesAny(name, MODEL_MATERIALS.taillights)) { collections.tailLights.add(material); lightMeshSets.taillight.add(object); }
+        // 灯组外透镜：材质同为 tembus_red.0（opacity≈0.82），被前 1 个、后 3 个 mesh 共用，
+        // 必须按 mesh 名区分前后且先判前（depan）再判后（tembus_red 会同时命中前罩材质名）。
+        if (matchesAny(name, MODEL_MATERIALS.headlightLens)) collections.headLens.add(material);
+        else if (matchesAny(name, MODEL_MATERIALS.taillightLens)) collections.tailLens.add(material);
       });
     });
 
@@ -241,6 +245,23 @@ function VehicleModelInstance() {
     model.materials.tailLights.forEach((material) => {
       if (!(material.emissive instanceof Color)) material.emissive = new Color("#ff2338");
       material.emissive.set("#ff2338"); material.emissiveIntensity = 0; material.needsUpdate = true;
+    });
+    // 灯组外透镜：记录 GLB 原始外观（opacity≈0.82、depthWrite=true），关灯态零自发光、原样显示
+    model.materials.headLens.forEach((material) => {
+      if (!(material.emissive instanceof Color)) material.emissive = new Color("#fff2d8");
+      material.emissive.set("#fff2d8");
+      material.userData.baseOpacity = material.opacity;
+      material.userData.baseDepthWrite = material.depthWrite;
+      material.emissiveIntensity = 0;
+      material.needsUpdate = true;
+    });
+    model.materials.tailLens.forEach((material) => {
+      if (!(material.emissive instanceof Color)) material.emissive = new Color("#ff2338");
+      material.emissive.set("#ff2338");
+      material.userData.baseOpacity = material.opacity;
+      material.userData.baseDepthWrite = material.depthWrite;
+      material.emissiveIntensity = 0;
+      material.needsUpdate = true;
     });
   }, [model]);
 
@@ -358,6 +379,23 @@ function VehicleModelInstance() {
     });
     model.materials.tailLights.forEach((material) => {
       material.emissiveIntensity = Math.max(tailLightGlow * 3.2, hovered === "taillight" ? 1.6 : 0);
+    });
+    // 灯组外透镜驱动（bugfix：原模型透镜 opacity≈0.82，开灯时把内部发光体完全挡住，
+    // 开关灯在车模上无任何视觉变化）。前透镜开灯时降透明度并关深度写入，让内部 LED
+    // 灯带透出；后透镜是红色灯罩，开灯时透镜自身红色发光，还原真实尾灯外观。
+    const headLensGlow = Math.max(headlightGlow, hovered === "headlight" ? 0.35 : 0);
+    const tailLensGlow = Math.max(tailLightGlow, hovered === "taillight" ? 0.35 : 0);
+    model.materials.headLens.forEach((material) => {
+      const baseOpacity = material.userData.baseOpacity ?? 0.82;
+      material.opacity = baseOpacity + (0.22 - baseOpacity) * headLensGlow;
+      material.depthWrite = headLensGlow < 0.5 ? (material.userData.baseDepthWrite ?? true) : false;
+      material.emissiveIntensity = headLensGlow * 0.8;
+    });
+    model.materials.tailLens.forEach((material) => {
+      const baseOpacity = material.userData.baseOpacity ?? 0.82;
+      material.opacity = baseOpacity + (0.95 - baseOpacity) * tailLensGlow;
+      material.depthWrite = tailLensGlow < 0.5 ? (material.userData.baseDepthWrite ?? true) : false;
+      material.emissiveIntensity = tailLensGlow * 2.4;
     });
     PARTS.forEach((part) => {
       const pivot = model.pivots[part.id];

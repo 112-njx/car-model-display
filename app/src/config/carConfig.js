@@ -108,6 +108,10 @@ export const MODEL_MATERIALS = {
   rims: ["wheels"],
   headlights: ["right_front_light", "left_front_light", "foglight_r", "foglight_l"],
   taillights: ["right_rear_light", "left_rear_light", "breaklight_l"],
+  // 灯组外透镜（材质同为 tembus_red.0，按 mesh 名区分前后；bugfix：透镜 opacity 0.82
+  // 会把内部发光体完全挡住，导致开关灯无视觉变化——VehicleModel 按灯态驱动透镜）
+  headlightLens: ["tembus_depan"],
+  taillightLens: ["tembus_red"],
 };
 
 // 车身固定外观（T8 增补，见 docs/contracts/CHANGELOG.md 0014）
