@@ -1,6 +1,6 @@
 {
   "title": "verify-pick",
-  "generatedAt": "2026-09-22T08:00:06.621Z",
+  "generatedAt": "2026-09-22T09:22:31.980Z",
   "baseUrl": "http://127.0.0.1:5191/",
   "debugPort": 9222,
   "browser": "Edg/153.0.4234.48",
@@ -9,18 +9,18 @@
     "height": 900,
     "mobile": false
   },
-  "exitCode": 1,
+  "exitCode": 0,
   "counts": {
-    "pass": 34,
-    "fail": 2,
-    "skip": 1,
+    "pass": 38,
+    "fail": 0,
+    "skip": 0,
     "known": 0
   },
   "results": [
     {
       "status": "pass",
       "name": "每个 hitTarget 均含 {id,center,size,screen} 且类型正确",
-      "detail": "首项 {\"id\":\"window_lf\",\"center\":[0.9056059744520533,1.2813262740852314,0.45500595117597387],\"size\":[0.27953331376680135,0.6075187303013243,1.5295888977985075],\"screen\":{\"x\":774.5729517281693,\"y\":408.91726514290866}}"
+      "detail": "首项 {\"id\":\"window_lf\",\"center\":[0.9056059744520533,1.2813262740852314,0.45500595117597387],\"size\":[0.27953331376680135,0.6075187303013243,1.5295888977985075],\"screen\":{\"x\":774.5751631254119,\"y\":407.06538003678656}}"
     },
     {
       "status": "pass",
@@ -48,104 +48,104 @@
       "detail": "settled=true 末次位移=0 position=[6.8,3.1,7.6]"
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "左前车窗（window_lf） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (775,409) 后 open=false progress=0.000"
+      "detail": "点击 (775,409) 后 open=true progress=0.993｜命中了**其它部件** [\"0\"] ⇒ 命中体串扰/遮挡（期望 window_lf）"
     },
     {
-      "status": "skip",
+      "status": "pass",
       "name": "左前车窗（window_lf） 再次点击：open 由 true 翻回 false",
-      "detail": "前置未满足：首次点击未打开该部件（见上一条 FAIL），无法验证「翻回」，不重复计数"
+      "detail": "点击 (710,561) 后 open=false｜命中了**其它部件** [\"0\"] ⇒ 命中体串扰/遮挡（期望 window_lf）"
     },
     {
       "status": "pass",
       "name": "右前车窗（window_rf） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (592,378) 后 open=true progress=0.775"
+      "detail": "点击 (592,378) 后 open=true progress=0.989｜命中了**其它部件** [\"1\"] ⇒ 命中体串扰/遮挡（期望 window_rf）"
     },
     {
       "status": "pass",
       "name": "右前车窗（window_rf） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (593,409) 后 open=false"
+      "detail": "点击 (593,416) 后 open=false｜命中了**其它部件** [\"1\"] ⇒ 命中体串扰/遮挡（期望 window_rf）"
     },
     {
       "status": "pass",
       "name": "左后车窗（window_lr） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (881,378) 后 open=true progress=0.734"
+      "detail": "点击 (881,378) 后 open=true progress=0.992｜命中了**其它部件** [\"2\"] ⇒ 命中体串扰/遮挡（期望 window_lr）"
     },
     {
       "status": "pass",
       "name": "左后车窗（window_lr） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (880,405) 后 open=false"
+      "detail": "点击 (880,413) 后 open=false｜命中了**其它部件** [\"2\"] ⇒ 命中体串扰/遮挡（期望 window_lr）"
     },
     {
       "status": "pass",
       "name": "右后车窗（window_rr） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (706,354) 后 open=true progress=0.764"
+      "detail": "点击 (706,354) 后 open=true progress=0.996｜命中了**其它部件** [\"3\"] ⇒ 命中体串扰/遮挡（期望 window_rr）"
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "右后车窗（window_rr） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (706,379) 后 open=true"
+      "detail": "点击 (672,415) 后 open=false｜命中了**其它部件** [\"3\"] ⇒ 命中体串扰/遮挡（期望 window_rr）"
     },
     {
       "status": "pass",
       "name": "左前门（door_lf） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (788,489) 后 open=true progress=0.997"
+      "detail": "点击 (788,467) 后 open=true progress=1.000｜命中了**其它部件** [\"4\"] ⇒ 命中体串扰/遮挡（期望 door_lf）"
     },
     {
       "status": "pass",
       "name": "左前门（door_lf） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (832,517) 后 open=false"
+      "detail": "点击 (832,494) 后 open=false｜命中了**其它部件** [\"4\"] ⇒ 命中体串扰/遮挡（期望 door_lf）"
     },
     {
       "status": "pass",
       "name": "右前门（door_rf） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (592,453) 后 open=true progress=0.997"
+      "detail": "点击 (592,453) 后 open=true progress=1.000｜命中了**其它部件** [\"5\"] ⇒ 命中体串扰/遮挡（期望 door_rf）"
     },
     {
       "status": "pass",
       "name": "右前门（door_rf） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (484,420) 后 open=false"
+      "detail": "点击 (484,420) 后 open=false｜命中了**其它部件** [\"5\"] ⇒ 命中体串扰/遮挡（期望 door_rf）"
     },
     {
       "status": "pass",
       "name": "左后门（door_lr） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (886,434) 后 open=true progress=0.997"
+      "detail": "点击 (886,434) 后 open=true progress=1.000｜命中了**其它部件** [\"6\"] ⇒ 命中体串扰/遮挡（期望 door_lr）"
     },
     {
       "status": "pass",
       "name": "左后门（door_lr） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (944,451) 后 open=false"
+      "detail": "点击 (944,451) 后 open=false｜命中了**其它部件** [\"6\"] ⇒ 命中体串扰/遮挡（期望 door_lr）"
     },
     {
       "status": "pass",
       "name": "右后门（door_rr） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (656,444) 后 open=true progress=0.997"
+      "detail": "点击 (656,444) 后 open=true progress=1.000｜命中了**其它部件** [\"7\"] ⇒ 命中体串扰/遮挡（期望 door_rr）"
     },
     {
       "status": "pass",
       "name": "右后门（door_rr） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (642,412) 后 open=false"
+      "detail": "点击 (642,412) 后 open=false｜命中了**其它部件** [\"7\"] ⇒ 命中体串扰/遮挡（期望 door_rr）"
     },
     {
       "status": "pass",
       "name": "前备箱（frunk） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (505,489) 后 open=true progress=0.997"
+      "detail": "点击 (505,489) 后 open=true progress=1.000｜命中了**其它部件** [\"8\"] ⇒ 命中体串扰/遮挡（期望 frunk）"
     },
     {
       "status": "pass",
       "name": "前备箱（frunk） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (555,432) 后 open=false"
+      "detail": "点击 (555,431) 后 open=false｜命中了**其它部件** [\"8\"] ⇒ 命中体串扰/遮挡（期望 frunk）"
     },
     {
       "status": "pass",
       "name": "后备箱（trunk） 鼠标点击：open 由 false 翻转为 true",
-      "detail": "点击 (970,376) 后 open=true progress=0.997"
+      "detail": "点击 (970,376) 后 open=true progress=1.000｜命中了**其它部件** [\"9\"] ⇒ 命中体串扰/遮挡（期望 trunk）"
     },
     {
       "status": "pass",
       "name": "后备箱（trunk） 再次点击：open 由 true 翻回 false",
-      "detail": "点击 (974,295) 后 open=false"
+      "detail": "点击 (974,294) 后 open=false｜命中了**其它部件** [\"9\"] ⇒ 命中体串扰/遮挡（期望 trunk）"
     },
     {
       "status": "pass",
@@ -170,7 +170,7 @@
     {
       "status": "pass",
       "name": "拖拽确实转动了相机（证明确实发生了拖拽而非事件被吞）",
-      "detail": "相机位移 3.8492"
+      "detail": "相机位移 4.2001"
     },
     {
       "status": "pass",
@@ -190,12 +190,17 @@
     {
       "status": "pass",
       "name": "点击后 bumpInteraction 推进 lastInteractionAt",
-      "detail": "1790064003120 → 1790064005553"
+      "detail": "1790068948459 → 1790068951001"
     },
     {
       "status": "pass",
       "name": "点击后 pushToast 产生中文反馈",
       "detail": "toast 数 0 → 1，末条 \"左前门已打开\""
+    },
+    {
+      "status": "pass",
+      "name": "本轮运行期间页面未被重载（重载会清空 mock 与 store 状态，使断言失去意义）",
+      "detail": "无重载"
     },
     {
       "status": "pass",
@@ -206,7 +211,8 @@
   "pageEvents": {
     "exceptions": [],
     "logErrors": [],
-    "consoleErrors": []
+    "consoleErrors": [],
+    "navigations": []
   },
   "signals": {
     "pick": true,

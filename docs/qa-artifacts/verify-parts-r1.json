@@ -1,6 +1,6 @@
 {
   "title": "verify-parts",
-  "generatedAt": "2026-09-22T07:32:19.320Z",
+  "generatedAt": "2026-09-22T09:35:13.956Z",
   "baseUrl": "http://127.0.0.1:5191/",
   "debugPort": 9222,
   "browser": "Edg/153.0.4234.48",
@@ -11,10 +11,10 @@
   },
   "exitCode": 0,
   "counts": {
-    "pass": 78,
+    "pass": 79,
     "fail": 0,
     "skip": 0,
-    "known": 1
+    "known": 0
   },
   "results": [
     {
@@ -100,7 +100,7 @@
     {
       "status": "pass",
       "name": "左前车窗（window_lf） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9972589384317867"
+      "detail": "实得 0.9925276071252647"
     },
     {
       "status": "pass",
@@ -110,12 +110,12 @@
     {
       "status": "pass",
       "name": "左前车窗（window_lf） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0.086,0.37,0.514,0.741,0.831,0.885,0.918,0.939,0.966,0.981,0.988,0.993]"
+      "detail": "采样 [0.027,0.209,0.327,0.461,0.544,0.625,0.689,0.734,0.785,0.825,0.854,0.877,0.899,0.916,0.931,0.942,0.956,0.965,0.972,0.979]"
     },
     {
       "status": "pass",
       "name": "左前车窗（window_lf） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.002050324277805225"
+      "detail": "实得 open=false progress=0.007714984890049217"
     },
     {
       "status": "pass",
@@ -125,7 +125,7 @@
     {
       "status": "pass",
       "name": "右前车窗（window_rf） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9977089957032911"
+      "detail": "实得 0.9920676821713699"
     },
     {
       "status": "pass",
@@ -135,12 +135,12 @@
     {
       "status": "pass",
       "name": "右前车窗（window_rf） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0,0.4,0.59,0.826,0.887,0.927,0.957,0.974,0.983,0.99,0.994]"
+      "detail": "采样 [0,0.139,0.324,0.388,0.623,0.683,0.741,0.786,0.822,0.853,0.878,0.899,0.919,0.935,0.949,0.959,0.968,0.975,0.98,0.985]"
     },
     {
       "status": "pass",
       "name": "右前车窗（window_rf） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.0035414871413621154"
+      "detail": "实得 open=false progress=0.0053088643360124504"
     },
     {
       "status": "pass",
@@ -150,7 +150,7 @@
     {
       "status": "pass",
       "name": "左后车窗（window_lr） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9982639276721064"
+      "detail": "实得 0.9935417700481859"
     },
     {
       "status": "pass",
@@ -160,12 +160,12 @@
     {
       "status": "pass",
       "name": "左后车窗（window_lr） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0.086,0.585,0.81,0.908,0.954,0.982,0.993]"
+      "detail": "采样 [0.015,0.312,0.535,0.687,0.777,0.852,0.902,0.931,0.953,0.966,0.976,0.984,0.989,0.991]"
     },
     {
       "status": "pass",
       "name": "左后车窗（window_lr） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.005770748067932267"
+      "detail": "实得 open=false progress=0.007641171163820733"
     },
     {
       "status": "pass",
@@ -175,7 +175,7 @@
     {
       "status": "pass",
       "name": "右后车窗（window_rr） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9972321238895118"
+      "detail": "实得 0.9925337693086052"
     },
     {
       "status": "pass",
@@ -185,12 +185,12 @@
     {
       "status": "pass",
       "name": "右后车窗（window_rr） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0.025,0.444,0.676,0.824,0.899,0.938,0.964,0.98,0.989,0.994]"
+      "detail": "采样 [0,0.203,0.349,0.496,0.584,0.665,0.716,0.777,0.82,0.857,0.881,0.901,0.919,0.93,0.945,0.954,0.963,0.97,0.976,0.981]"
     },
     {
       "status": "pass",
       "name": "右后车窗（window_rr） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.007356215877288522"
+      "detail": "实得 open=false progress=0.005845086587314341"
     },
     {
       "status": "pass",
@@ -200,7 +200,7 @@
     {
       "status": "pass",
       "name": "左前门（door_lf） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9989165447073833"
+      "detail": "实得 0.9979056247916669"
     },
     {
       "status": "pass",
@@ -210,12 +210,12 @@
     {
       "status": "pass",
       "name": "左前门（door_lf） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0,0.689,0.896,0.956,0.982,0.993]"
+      "detail": "采样 [0.054,0.825,0.929,0.975,0.991]"
     },
     {
       "status": "pass",
       "name": "左前门（door_lf） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.0013945203673742877"
+      "detail": "实得 open=false progress=0.003770353591066702"
     },
     {
       "status": "pass",
@@ -225,7 +225,7 @@
     {
       "status": "pass",
       "name": "右前门（door_rf） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9998897764520153"
+      "detail": "实得 0.9970152819732505"
     },
     {
       "status": "pass",
@@ -235,12 +235,12 @@
     {
       "status": "pass",
       "name": "右前门（door_rf） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0.085,0.919,0.985,0.997]"
+      "detail": "采样 [0,0.523,0.759,0.881,0.948,0.978,0.991]"
     },
     {
       "status": "pass",
       "name": "右前门（door_rf） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.000008070386491300554"
+      "detail": "实得 open=false progress=0.004907937116142853"
     },
     {
       "status": "pass",
@@ -250,7 +250,7 @@
     {
       "status": "pass",
       "name": "左后门（door_lr） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9994153224151602"
+      "detail": "实得 0.9957767487118813"
     },
     {
       "status": "pass",
@@ -260,12 +260,12 @@
     {
       "status": "pass",
       "name": "左后门（door_lr） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0.125,0.929,0.983,0.997]"
+      "detail": "采样 [0.29,0.585,0.787,0.899,0.946,0.97,0.986,0.993]"
     },
     {
       "status": "pass",
       "name": "左后门（door_lr） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.002601273752323998"
+      "detail": "实得 open=false progress=0.0023844685332868746"
     },
     {
       "status": "pass",
@@ -275,7 +275,7 @@
     {
       "status": "pass",
       "name": "右后门（door_rr） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9999923334971642"
+      "detail": "实得 0.9940126118670094"
     },
     {
       "status": "pass",
@@ -285,12 +285,12 @@
     {
       "status": "pass",
       "name": "右后门（door_rr） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0,0.604,0.982,0.999]"
+      "detail": "采样 [0,0.678,0.815,0.906,0.948,0.971,0.985,0.992]"
     },
     {
       "status": "pass",
       "name": "右后门（door_rr） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.0038559005569996636"
+      "detail": "实得 open=false progress=0.0032712288803893753"
     },
     {
       "status": "pass",
@@ -300,7 +300,7 @@
     {
       "status": "pass",
       "name": "前备箱（frunk） 打开：progress 终值 ≈1",
-      "detail": "实得 0.99621117752089"
+      "detail": "实得 0.9992307926586474"
     },
     {
       "status": "pass",
@@ -310,12 +310,12 @@
     {
       "status": "pass",
       "name": "前备箱（frunk） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0,0.654,0.834,0.936,0.969,0.985,0.993]"
+      "detail": "采样 [0.057,0.682,0.901,0.966,0.989,0.996]"
     },
     {
       "status": "pass",
       "name": "前备箱（frunk） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.0005888506285732916"
+      "detail": "实得 open=false progress=0.002126545193573118"
     },
     {
       "status": "pass",
@@ -325,7 +325,7 @@
     {
       "status": "pass",
       "name": "后备箱（trunk） 打开：progress 终值 ≈1",
-      "detail": "实得 0.9998874597925328"
+      "detail": "实得 0.9997914538086144"
     },
     {
       "status": "pass",
@@ -335,17 +335,17 @@
     {
       "status": "pass",
       "name": "后备箱（trunk） 过渡期 progress 恒在 [0,1]",
-      "detail": "采样 [0,0.986,0.998]"
+      "detail": "采样 [0,0.769,0.953,0.99,0.998]"
     },
     {
       "status": "pass",
       "name": "后备箱（trunk） 关闭：audit.open=false 且 progress 终值 ≈0",
-      "detail": "实得 open=false progress=0.0013815791885770847"
+      "detail": "实得 open=false progress=0.0028499280572472367"
     },
     {
       "status": "pass",
       "name": "集成层：过渡期采到真实动画进度（0<progress<1）",
-      "detail": "左前车窗 采样 [0.086,0.37,0.514,0.741,0.831,0.885,0.918,0.939,0.966,0.981,0.988,0.993]"
+      "detail": "左前车窗 采样 [0.027,0.209,0.327,0.461,0.544,0.625,0.689,0.734,0.785,0.825,0.854,0.877,0.899,0.916,0.931,0.942,0.956,0.965,0.972,0.979]"
     },
     {
       "status": "pass",
@@ -403,151 +403,184 @@
       "detail": "cameraView \"hero\" → \"hero\"｜parts 语义态一致"
     },
     {
-      "status": "known",
-      "name": "运行期异常·已知偏差（webgpu-weakmap-texture）",
-      "detail": "three/webgpu 渲染期异常（FormDrive 基线既有；实测画面稳定、功能零影响）｜12 次｜实得：TypeError: Invalid value used as weak map key"
+      "status": "pass",
+      "name": "本轮运行期间页面未被重载（重载会清空 mock 与 store 状态，使断言失去意义）",
+      "detail": "无重载"
     },
     {
       "status": "pass",
       "name": "运行期无非已知偏差的未捕获异常 / console.error",
-      "detail": "非已知偏差异常=[] consoleErrors=[]（另有 12 条已裁定偏差，见 KNOWN 明细）"
+      "detail": "非已知偏差异常=[] consoleErrors=[]"
     }
   ],
   "pageEvents": {
-    "exceptions": [
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)"
-    ],
+    "exceptions": [],
     "logErrors": [],
-    "consoleErrors": []
+    "consoleErrors": [],
+    "navigations": []
   },
   "transitions": [
     {
       "id": "window_lf",
       "samples": [
-        0.08569859756290032,
-        0.3703933375889988,
-        0.5139991955914183,
-        0.7405535613713992,
-        0.831309566808487,
-        0.8852271131206499,
-        0.9180163137728923,
-        0.9386588884837315,
-        0.9656260063782441,
-        0.9810404022845769,
-        0.9881355648894806,
-        0.9928638010191112
+        0.027178823967830893,
+        0.2091365849423169,
+        0.32732635988604786,
+        0.46120493833551096,
+        0.5444387027564365,
+        0.624540623937431,
+        0.689125193670114,
+        0.7337887200209053,
+        0.7846853860747135,
+        0.8251601732617448,
+        0.8541322660725517,
+        0.8770115708323709,
+        0.8992370952954979,
+        0.9157536471213337,
+        0.9314094150982767,
+        0.9423963877124589,
+        0.9556596419604458,
+        0.9647297342433744,
+        0.971967619762772,
+        0.9788066960777738
       ]
     },
     {
       "id": "window_rf",
       "samples": [
         0,
-        0.399513428577483,
-        0.5896870016651704,
-        0.8261669633566711,
-        0.8869188978992245,
-        0.927187672179458,
-        0.9572544421969965,
-        0.9737450306686493,
-        0.9830945631201143,
-        0.9898535359117966,
-        0.9943141804373928
+        0.13871084956669397,
+        0.32409990340363126,
+        0.387808416155427,
+        0.6233617118290892,
+        0.6831177420101284,
+        0.7406391645912477,
+        0.7857132054748833,
+        0.8220753263363059,
+        0.8532874428299552,
+        0.877760127906661,
+        0.8986033270839989,
+        0.9187971553572526,
+        0.9352155711382385,
+        0.9486797567778609,
+        0.9591506757419132,
+        0.9682171994868415,
+        0.9752877201724821,
+        0.980310307429966,
+        0.9848538665884484
       ]
     },
     {
       "id": "window_lr",
       "samples": [
-        0.08569859774273914,
-        0.5850573661692005,
-        0.8097478535566353,
-        0.908296983046074,
-        0.9544734679117847,
-        0.9818695058771945,
-        0.9926958310161187
+        0.015065364471970712,
+        0.3121744263896856,
+        0.5348684452473391,
+        0.6873246977355171,
+        0.7770204018892659,
+        0.8517054825561399,
+        0.9018462350568837,
+        0.9307727010020365,
+        0.9529227307139357,
+        0.9663887685969897,
+        0.9762079788398056,
+        0.9837321579437076,
+        0.9885434080655464,
+        0.9910788462794212
       ]
     },
     {
       "id": "window_rr",
       "samples": [
-        0.025250729971061918,
-        0.4444129630950429,
-        0.6761937708112754,
-        0.824060483637587,
-        0.898586595268588,
-        0.9378130432734747,
-        0.963648506897281,
-        0.9797134058973243,
-        0.9886731016847013,
-        0.9935225605938185
+        0,
+        0.20258497353089788,
+        0.3494844001788014,
+        0.49595009597100825,
+        0.5836170960997469,
+        0.6653298971464723,
+        0.7160011243934578,
+        0.7767258744480813,
+        0.8200974565582831,
+        0.8565193361974169,
+        0.880807446869437,
+        0.9014892894373985,
+        0.9185287433336766,
+        0.9304636053802627,
+        0.9447788915843506,
+        0.9543832360656516,
+        0.9627437290234072,
+        0.9697721018142519,
+        0.9758838852472385,
+        0.9806931437476646
       ]
     },
     {
       "id": "door_lf",
       "samples": [
-        0,
-        0.6886227252728306,
-        0.8955868861837187,
-        0.9561003968956481,
-        0.9822718232762705,
-        0.9931056290198971
+        0.05436630561470823,
+        0.8252851390370644,
+        0.9286601356356562,
+        0.9753997826323618,
+        0.9910932868536217
       ]
     },
     {
       "id": "door_rf",
       "samples": [
-        0.08520016784422568,
-        0.919282510140932,
-        0.985183294725638,
-        0.9972660285956308
+        0,
+        0.523362959917028,
+        0.7594434303630854,
+        0.8808592844052818,
+        0.948287202813373,
+        0.9780447722163857,
+        0.9912709610457989
       ]
     },
     {
       "id": "door_lr",
       "samples": [
-        0.1247537468082517,
-        0.9287064914360174,
-        0.9833875024071882,
-        0.9970595716168454
+        0.29004237905287067,
+        0.5847190498681403,
+        0.7865601032836113,
+        0.8988600421419647,
+        0.9460905773822534,
+        0.9701030855630737,
+        0.9862057025433487,
+        0.9933130672971929
       ]
     },
     {
       "id": "door_rr",
       "samples": [
         0,
-        0.6044784480386028,
-        0.9821678095015348,
-        0.9993161691732939
+        0.6779182873670615,
+        0.8150001010564369,
+        0.9055939387896331,
+        0.9476786097351083,
+        0.9708703871930724,
+        0.9848226333903691,
+        0.991621195196453
       ]
     },
     {
       "id": "frunk",
       "samples": [
-        0,
-        0.6542709834174696,
-        0.8341381390214433,
-        0.9361232606010994,
-        0.9686706524615112,
-        0.9845237702964803,
-        0.9929561472990439
+        0.05682175960033342,
+        0.6824912811241061,
+        0.9010707172594905,
+        0.9657082335853145,
+        0.9894465240596978,
+        0.9964218164662889
       ]
     },
     {
       "id": "trunk",
       "samples": [
         0,
-        0.9863572904687729,
-        0.998320904460693
+        0.7690952520418375,
+        0.9530912005836102,
+        0.9896166321720667,
+        0.9978251596084073
       ]
     }
   ]

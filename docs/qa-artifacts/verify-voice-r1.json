@@ -1,6 +1,6 @@
 {
   "title": "verify-voice",
-  "generatedAt": "2026-09-22T08:06:07.965Z",
+  "generatedAt": "2026-09-22T09:26:32.189Z",
   "baseUrl": "http://127.0.0.1:5191/",
   "debugPort": 9222,
   "browser": "Edg/153.0.4234.48",
@@ -9,10 +9,10 @@
     "height": 900,
     "mobile": false
   },
-  "exitCode": 1,
+  "exitCode": 0,
   "counts": {
-    "pass": 47,
-    "fail": 9,
+    "pass": 100,
+    "fail": 0,
     "skip": 0,
     "known": 0
   },
@@ -38,9 +38,9 @@
       "detail": "受影响控制器数=1，控制器总数=1"
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开车窗」→ §6 全部车窗开",
-      "detail": "状态一致"
+      "detail": "toast=\"车窗已全部打开\""
     },
     {
       "status": "pass",
@@ -48,9 +48,9 @@
       "detail": "收到结果的实例数 1"
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开车窗」产生 toast 反馈",
-      "detail": "toast 数 0 → 0"
+      "detail": "toast 数 0 → 1"
     },
     {
       "status": "pass",
@@ -65,7 +65,7 @@
     {
       "status": "pass",
       "name": "「关闭车窗」→ §6 全部车窗合",
-      "detail": "toast=\"已执行：关闭全部车窗\""
+      "detail": "toast=\"车窗已全部关闭\""
     },
     {
       "status": "pass",
@@ -88,9 +88,9 @@
       "detail": "lastCommand=\"关闭车窗\""
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开左前门」→ §6 指定车门开",
-      "detail": "状态一致"
+      "detail": "toast=\"左前门已打开\""
     },
     {
       "status": "pass",
@@ -98,9 +98,9 @@
       "detail": "收到结果的实例数 1"
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开左前门」产生 toast 反馈",
-      "detail": "toast 数 0 → 0"
+      "detail": "toast 数 0 → 1"
     },
     {
       "status": "pass",
@@ -115,7 +115,7 @@
     {
       "status": "pass",
       "name": "「关闭右后门」→ §6 指定车门合",
-      "detail": "toast=\"已执行：关闭右后门\""
+      "detail": "toast=\"右后门已关闭\""
     },
     {
       "status": "pass",
@@ -138,9 +138,9 @@
       "detail": "lastCommand=\"关闭右后门\""
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开前备箱」→ §6 前备箱开",
-      "detail": "状态一致"
+      "detail": "toast=\"前备箱已打开\""
     },
     {
       "status": "pass",
@@ -148,9 +148,9 @@
       "detail": "收到结果的实例数 1"
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开前备箱」产生 toast 反馈",
-      "detail": "toast 数 0 → 0"
+      "detail": "toast 数 0 → 1"
     },
     {
       "status": "pass",
@@ -163,9 +163,9 @@
       "detail": "lastCommand=\"打开前备箱\""
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开后备箱」→ §6 后备箱开",
-      "detail": "状态一致"
+      "detail": "toast=\"后备箱已打开\""
     },
     {
       "status": "pass",
@@ -173,9 +173,9 @@
       "detail": "收到结果的实例数 1"
     },
     {
-      "status": "fail",
+      "status": "pass",
       "name": "「打开后备箱」产生 toast 反馈",
-      "detail": "toast 数 0 → 0"
+      "detail": "toast 数 0 → 1"
     },
     {
       "status": "pass",
@@ -190,7 +190,7 @@
     {
       "status": "pass",
       "name": "「打开大灯」→ §6 大灯开",
-      "detail": "toast=\"已执行：打开大灯\""
+      "detail": "toast=\"大灯已开启\""
     },
     {
       "status": "pass",
@@ -215,7 +215,7 @@
     {
       "status": "pass",
       "name": "「关闭大灯」→ §6 大灯关",
-      "detail": "toast=\"已执行：关闭大灯\""
+      "detail": "toast=\"大灯已关闭\""
     },
     {
       "status": "pass",
@@ -240,7 +240,7 @@
     {
       "status": "pass",
       "name": "「打开尾灯」→ §13.1 LIGHTS 尾灯（别名：后灯/刹车灯）",
-      "detail": "toast=\"已执行：打开尾灯\""
+      "detail": "toast=\"尾灯已开启\""
     },
     {
       "status": "pass",
@@ -265,7 +265,7 @@
     {
       "status": "pass",
       "name": "「转一下」→ §6 视角环绕一周",
-      "detail": "toast=\"已执行：环绕一周\""
+      "detail": "toast=\"正在环绕车辆一周\""
     },
     {
       "status": "pass",
@@ -293,27 +293,481 @@
       "detail": "lastCommand=\"转一下\""
     },
     {
-      "status": "fail",
-      "name": "脚本执行未完成",
-      "detail": "页面求值抛错：TypeError: Cannot read properties of undefined (reading 'deliveries')\n    at <anonymous>:1:49\n    at <anonymous>:1:60｜表达式：(() => window.__carDisplaySpeechRecognitionMock.deliveries)()"
+      "status": "pass",
+      "name": "「看侧面」→ §6 看侧面",
+      "detail": "toast=\"视角已切换到侧面\""
+    },
+    {
+      "status": "pass",
+      "name": "「看侧面」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「看侧面」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「看侧面」写入 voice.transcript",
+      "detail": "transcript=\"看侧面\""
+    },
+    {
+      "status": "pass",
+      "name": "「看侧面」写入 voice.lastCommand",
+      "detail": "lastCommand=\"看侧面\""
+    },
+    {
+      "status": "pass",
+      "name": "「看正面」→ §6 看正面",
+      "detail": "toast=\"视角已切换到正面\""
+    },
+    {
+      "status": "pass",
+      "name": "「看正面」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「看正面」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「看正面」写入 voice.transcript",
+      "detail": "transcript=\"看正面\""
+    },
+    {
+      "status": "pass",
+      "name": "「看正面」写入 voice.lastCommand",
+      "detail": "lastCommand=\"看正面\""
+    },
+    {
+      "status": "pass",
+      "name": "「复位」→ §12.3 T6 复位视角",
+      "detail": "toast=\"视角已切换到复位\""
+    },
+    {
+      "status": "pass",
+      "name": "「复位」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「复位」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「复位」写入 voice.transcript",
+      "detail": "transcript=\"复位\""
+    },
+    {
+      "status": "pass",
+      "name": "「复位」写入 voice.lastCommand",
+      "detail": "lastCommand=\"复位\""
+    },
+    {
+      "status": "pass",
+      "name": "「全部关闭」→ §6 复位所有部件与灯光",
+      "detail": "toast=\"已执行：全部关闭\""
+    },
+    {
+      "status": "pass",
+      "name": "「全部关闭」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「全部关闭」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「全部关闭」写入 voice.transcript",
+      "detail": "transcript=\"全部关闭\""
+    },
+    {
+      "status": "pass",
+      "name": "「全部关闭」写入 voice.lastCommand",
+      "detail": "lastCommand=\"全部关闭\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开全部车门」→ §12.3 T6 范围词「全部」",
+      "detail": "toast=\"车门已全部打开\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开全部车门」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「打开全部车门」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「打开全部车门」写入 voice.transcript",
+      "detail": "transcript=\"打开全部车门\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开全部车门」写入 voice.lastCommand",
+      "detail": "lastCommand=\"打开全部车门\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开所有玻璃」→ §13.1 别名「玻璃」+ 范围词「所有」",
+      "detail": "toast=\"车窗已全部打开\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开所有玻璃」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「打开所有玻璃」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「打开所有玻璃」写入 voice.transcript",
+      "detail": "transcript=\"打开所有玻璃\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开所有玻璃」写入 voice.lastCommand",
+      "detail": "lastCommand=\"打开所有玻璃\""
+    },
+    {
+      "status": "pass",
+      "name": "「关上左前窗」→ §13.1 别名「左前窗」+ 动词「关上」",
+      "detail": "toast=\"左前车窗已关闭\""
+    },
+    {
+      "status": "pass",
+      "name": "「关上左前窗」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「关上左前窗」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「关上左前窗」写入 voice.transcript",
+      "detail": "transcript=\"关上左前窗\""
+    },
+    {
+      "status": "pass",
+      "name": "「关上左前窗」写入 voice.lastCommand",
+      "detail": "lastCommand=\"关上左前窗\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开车灯」→ §13.1 别名「车灯」",
+      "detail": "toast=\"大灯已开启\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开车灯」识别结果已投递到识别链路",
+      "detail": "收到结果的实例数 1"
+    },
+    {
+      "status": "pass",
+      "name": "「打开车灯」产生 toast 反馈",
+      "detail": "toast 数 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "「打开车灯」写入 voice.transcript",
+      "detail": "transcript=\"打开车灯\""
+    },
+    {
+      "status": "pass",
+      "name": "「打开车灯」写入 voice.lastCommand",
+      "detail": "lastCommand=\"打开车灯\""
+    },
+    {
+      "status": "pass",
+      "name": "识别错误事件被反映到 voice 片（status='error' 或 error 非空）",
+      "detail": "receivers=1 status=\"error\" error=null"
+    },
+    {
+      "status": "pass",
+      "name": "错误后 voice.status 仍属 §13.2 枚举",
+      "detail": "实得 \"error\""
+    },
+    {
+      "status": "pass",
+      "name": "传 null 后 voice.supported 复原为注入前的值",
+      "detail": "注入前 true → 恢复后 true"
+    },
+    {
+      "status": "pass",
+      "name": "本轮运行期间页面未被重载（重载会清空 mock 与 store 状态，使断言失去意义）",
+      "detail": "无重载"
+    },
+    {
+      "status": "pass",
+      "name": "运行期无非已知偏差的未捕获异常 / console.error",
+      "detail": "非已知偏差异常=[] consoleErrors=[]"
     }
   ],
   "pageEvents": {
-    "exceptions": [
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)",
-      "TypeError: Invalid value used as weak map key\n    at WeakMap.set (<anonymous>)\n    at Textures.get (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13256:17)\n    at Textures.updateTexture (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14536:30)\n    at Bindings._init (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:14011:23)\n    at Bindings.getForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13952:14)\n    at Bindings.updateForRender (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:13991:31)\n    at WebGPURenderer._renderObjectDirect (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27863:22)\n    at WebGPURenderer.renderObject (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27827:12)\n    at WebGPURenderer._renderObjects (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:27772:12)\n    at WebGPURenderer._renderScene (http://127.0.0.1:5191/node_modules/.vite/deps/three_webgpu.js?v=d4cf23d8:26870:64)"
-    ],
+    "exceptions": [],
     "logErrors": [],
-    "consoleErrors": []
-  }
+    "consoleErrors": [],
+    "navigations": []
+  },
+  "signals": {
+    "pick": false,
+    "partGeometry": false,
+    "cameraRig": false,
+    "perf": true,
+    "voice": true,
+    "any": true
+  },
+  "instances": 1,
+  "caseResults": [
+    {
+      "say": "打开车窗",
+      "note": "§6 全部车窗开",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "车窗已全部打开"
+      ],
+      "transcript": "打开车窗",
+      "lastCommand": "打开车窗",
+      "deliveriesBefore": 0
+    },
+    {
+      "say": "关闭车窗",
+      "note": "§6 全部车窗合",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "车窗已全部关闭"
+      ],
+      "transcript": "关闭车窗",
+      "lastCommand": "关闭车窗",
+      "deliveriesBefore": 2
+    },
+    {
+      "say": "打开左前门",
+      "note": "§6 指定车门开",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "左前门已打开"
+      ],
+      "transcript": "打开左前门",
+      "lastCommand": "打开左前门",
+      "deliveriesBefore": 4
+    },
+    {
+      "say": "关闭右后门",
+      "note": "§6 指定车门合",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "右后门已关闭"
+      ],
+      "transcript": "关闭右后门",
+      "lastCommand": "关闭右后门",
+      "deliveriesBefore": 6
+    },
+    {
+      "say": "打开前备箱",
+      "note": "§6 前备箱开",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "前备箱已打开"
+      ],
+      "transcript": "打开前备箱",
+      "lastCommand": "打开前备箱",
+      "deliveriesBefore": 8
+    },
+    {
+      "say": "打开后备箱",
+      "note": "§6 后备箱开",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "后备箱已打开"
+      ],
+      "transcript": "打开后备箱",
+      "lastCommand": "打开后备箱",
+      "deliveriesBefore": 10
+    },
+    {
+      "say": "打开大灯",
+      "note": "§6 大灯开",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "大灯已开启"
+      ],
+      "transcript": "打开大灯",
+      "lastCommand": "打开大灯",
+      "deliveriesBefore": 12
+    },
+    {
+      "say": "关闭大灯",
+      "note": "§6 大灯关",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "大灯已关闭"
+      ],
+      "transcript": "关闭大灯",
+      "lastCommand": "关闭大灯",
+      "deliveriesBefore": 14
+    },
+    {
+      "say": "打开尾灯",
+      "note": "§13.1 LIGHTS 尾灯（别名：后灯/刹车灯）",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "尾灯已开启"
+      ],
+      "transcript": "打开尾灯",
+      "lastCommand": "打开尾灯",
+      "deliveriesBefore": 16
+    },
+    {
+      "say": "转一下",
+      "note": "§6 视角环绕一周",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "正在环绕车辆一周"
+      ],
+      "transcript": "转一下",
+      "lastCommand": "转一下",
+      "deliveriesBefore": 18
+    },
+    {
+      "say": "看侧面",
+      "note": "§6 看侧面",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "视角已切换到侧面"
+      ],
+      "transcript": "看侧面",
+      "lastCommand": "看侧面",
+      "deliveriesBefore": 20
+    },
+    {
+      "say": "看正面",
+      "note": "§6 看正面",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "视角已切换到正面"
+      ],
+      "transcript": "看正面",
+      "lastCommand": "看正面",
+      "deliveriesBefore": 22
+    },
+    {
+      "say": "复位",
+      "note": "§12.3 T6 复位视角",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "视角已切换到复位"
+      ],
+      "transcript": "复位",
+      "lastCommand": "复位",
+      "deliveriesBefore": 24
+    },
+    {
+      "say": "全部关闭",
+      "note": "§6 复位所有部件与灯光",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "已执行：全部关闭"
+      ],
+      "transcript": "全部关闭",
+      "lastCommand": "全部关闭",
+      "deliveriesBefore": 26
+    },
+    {
+      "say": "打开全部车门",
+      "note": "§12.3 T6 范围词「全部」",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "车门已全部打开"
+      ],
+      "transcript": "打开全部车门",
+      "lastCommand": "打开全部车门",
+      "deliveriesBefore": 28
+    },
+    {
+      "say": "打开所有玻璃",
+      "note": "§13.1 别名「玻璃」+ 范围词「所有」",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "车窗已全部打开"
+      ],
+      "transcript": "打开所有玻璃",
+      "lastCommand": "打开所有玻璃",
+      "deliveriesBefore": 30
+    },
+    {
+      "say": "关上左前窗",
+      "note": "§13.1 别名「左前窗」+ 动词「关上」",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "左前车窗已关闭"
+      ],
+      "transcript": "关上左前窗",
+      "lastCommand": "关上左前窗",
+      "deliveriesBefore": 32
+    },
+    {
+      "say": "打开车灯",
+      "note": "§13.1 别名「车灯」",
+      "receivers": 1,
+      "ok": true,
+      "diff": "状态一致",
+      "toast": [
+        "大灯已开启"
+      ],
+      "transcript": "打开车灯",
+      "lastCommand": "打开车灯",
+      "deliveriesBefore": 34
+    }
+  ],
+  "supportedBefore": true
 }

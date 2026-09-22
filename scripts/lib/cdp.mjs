@@ -562,26 +562,64 @@ const MARK = { pass: "[PASS]", fail: "[FAIL]", skip: "[SKIP]", known: "[KNOWN]",
  * 4. **可撤销**：`revokeWhen` 写明何时应删除本条目、恢复为 FAIL。
  */
 export const KNOWN_DEVIATIONS = [
-  {
-    id: "webgpu-weakmap-texture",
-    reason: "three/webgpu 渲染期异常（FormDrive 基线既有；实测画面稳定、功能零影响）",
-    match: (text) => text.includes("Invalid value used as weak map key") && text.includes("three_webgpu"),
-    attribution:
-      "FormDrive 基线 `StudioCanvas.jsx` 的 `createRenderer` 只对 `await renderer.init()` 加了 try/catch，" +
-      "渲染期异常捕不到；`three/webgpu` 的 `Textures.updateTexture → Bindings._init` 对未定义的纹理源做 `WeakMap.set`。",
-    evidence:
-      "① 裸 WebGPU API 在同一无头 Edge 上渲染离屏纹理并读回成功（firstPixelBGRA=[229,153,51,255]，uncapturedErrors=[]）→ 浏览器 WebGPU 正常；" +
-      "② `Page.captureScreenshot` 裁 3D 画布区域 = 有画面（252 色 / stdDev 43.3）；" +
-      "③ 连拍 6 帧亮度均值极差 0.00 → 画面稳定，无闪烁/缺件。",
-    ruling: "项目负责人 2026-09-22 裁定按「已知偏差」记录，不计入全绿判据（docs/debug.md 记录 T9-03、人工配置区 #10）。",
-    revokeWhen: "T8 让渲染期异常也能回退到 WebGL，或升级 three 后 —— 届时删除本条目，该断言恢复为 FAIL。",
-  },
+  // ── 当前为空 ───────────────────────────────────────────────────────────────
+  // 曾经登记过一条 `webgpu-weakmap-texture`（three/webgpu 渲染期间歇抛 `Invalid value used as
+  // weak map key`），经项目负责人裁定按「已知偏差」放行。其 `revokeWhen` 条件已满足 ——
+  // T8 在集成分支 `8d20840` **去掉了 WebGPU 优先分支、强制 WebGL**（未捕获异常 514→0，
+  // `StudioCanvas.jsx` 现只 import `WebGLRenderer`），该异常不再出现（R1 轮四个脚本 KNOWN 均为 0）。
+  // 故**按纪律删除该条目，恢复最严口径**：若该异常日后重新出现，断言必须重新 FAIL，不得静默放行。
+  //
+  // 机制本身保留：日后若再出现必须放行的噪声，仍按顶部四条纪律登记（窄匹配 / 显式标注 /
+  // 不遮蔽回归 / 写明 revokeWhen）。
 ];
 
 /** 文本是否命中某条已知偏差；命中返回该条目，否则返回 null。 */
 export function matchKnownDeviation(text) {
   if (typeof text !== "string") return null;
   return KNOWN_DEVIATIONS.find((deviation) => deviation.match(text)) ?? null;
+}
+
+/**
+ * 按 CSS 选择器/文案找到 DOM 元素，**确证点击能落在它上面**之后才派发真实点击。
+ *
+ * **为什么必须有这个helper**（R1 轮的血的教训）：我曾用 `getBoundingClientRect()` 取按钮中心后
+ * 直接 `Input.dispatchMouseEvent`，而那个按钮在 `y=1005`、**视口高度只有 900** —— 点击落在视口外，
+ * 根本没打到按钮，我却据此得出「按钮无反应」的结论并当作**端到端确证**上报了一个 P1。
+ * 实际是测试无效：把按钮滚进视口后同一操作完全正常。
+ *
+ * 因此本helper 强制两步：① `scrollIntoView` 保证元素在视口内；② `elementFromPoint` 回验该坐标
+ * 命中的正是目标元素。任一步不满足即返回 `ok:false` 并说明原因，**绝不派发无效点击**。
+ *
+ * @returns {{ ok: boolean, reason?: string, point?: {x:number,y:number}, hit?: string }}
+ */
+export async function clickElement(session, finder) {
+  const located = await session.evaluate((finderSource) => {
+    // finder 以字符串形式传入页面，避免闭包无法序列化
+    const match = new Function("return " + finderSource)();
+    const element = [...document.querySelectorAll("button, [role=\"button\"], a, [data-testid]")].find(match);
+    if (!element) return { ok: false, reason: "未找到匹配元素" };
+    element.scrollIntoView({ block: "center", behavior: "instant" });
+    const rect = element.getBoundingClientRect();
+    const point = { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    const inViewport =
+      point.x >= 0 && point.y >= 0 && point.x <= window.innerWidth && point.y <= window.innerHeight;
+    const hit = document.elementFromPoint(point.x, point.y);
+    const hitText = hit ? `${hit.tagName}|${(hit.textContent ?? "").trim().slice(0, 16)}` : null;
+    const sameNode = hit === element || (hit && element.contains(hit)) || (hit && hit.contains(element));
+    return {
+      ok: inViewport && sameNode,
+      reason: !inViewport
+        ? `坐标 (${point.x},${point.y}) 在视口 ${window.innerWidth}x${window.innerHeight} 之外 —— 点击不会落在元素上`
+        : !sameNode
+          ? `该坐标命中的是 ${hitText}，不是目标元素 —— 可能被遮挡`
+          : undefined,
+      point,
+      hit: hitText,
+    };
+  }, finder.toString());
+  if (!located.ok) return located;
+  await session.mouse.click(located.point.x, located.point.y);
+  return located;
 }
 
 /**

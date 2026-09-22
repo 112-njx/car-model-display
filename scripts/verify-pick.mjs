@@ -34,6 +34,7 @@ import {
   classifyRuntimeNoise,
   checkNoReload,
   waitForCameraSettled,
+  waitForSceneSettled,
 } from "./lib/cdp.mjs";
 
 /** 拖拽距离：取冻结阈值的 10 倍，确保远超 tapMaxMovePx=6 */
@@ -100,6 +101,21 @@ await run("verify-pick", async ({ session, reporter, options }) => {
     return current.hitTargets?.find((target) => target.id === id) ?? null;
   };
 
+  /**
+   * 点击后哪些部件的 open 发生了变化。用于把「点击没生效」变成**可定位的证据**：
+   * 若变化的是**别的部件**，说明命中体相互遮挡/串扰（薄玻璃最易发生）；
+   * 若无人变化，说明该坐标落在所有命中体之外。二者根因不同，必须区分开报。
+   */
+  const changedParts = (before, after) =>
+    Object.keys(after.parts).filter((key) => after.parts[key].open !== before.parts[key].open);
+
+  const describeMiss = (id, before, after) => {
+    const changed = changedParts(before, after);
+    if (changed.length === 0) return "无任何部件变化 ⇒ 该坐标未落在任何命中体内（可能被遮挡或坐标已过期）";
+    if (changed.includes(id)) return `本部件已翻转（${JSON.stringify(changed)}）`;
+    return `命中了**其它部件** ${JSON.stringify(changed)} ⇒ 命中体串扰/遮挡（期望 ${id}）`;
+  };
+
   // ── 1.1 复位到基线（内含「先停自转 → 再复位相机 → 等停稳」，顺序不可换）────
   // hitTargets[].screen 是当前相机下的快照；自转或预设阻尼期间相机持续移动，
   // 快照在一次 CDP 往返内就失效 —— R1 轮实测因此出现多处假命中失败（详见 resetToBaseline 注释）。
@@ -122,6 +138,7 @@ await run("verify-pick", async ({ session, reporter, options }) => {
   // ── 2. 每个部件：点击 → 开合翻转 → 再点 → 翻回 ──────────────────────────
   for (const id of PART_IDS) {
     const name = `${labelOf(id)}（${id}）`;
+    const beforeClick = await readSnapshot(session);
     const target = await locate(id);
     if (!target) {
       reporter.skip(`${name} 点击开合`, "hitTargets 中无该部件（可能被遮挡或未建立命中体）");
@@ -129,13 +146,17 @@ await run("verify-pick", async ({ session, reporter, options }) => {
     }
 
     await session.mouse.click(target.screen.x, target.screen.y);
-    await delay(SETTLE_MS);
+    // **必须等场景停稳，不能只 delay(SETTLE_MS)**：开合动画约 4s，而命中体随几何移动。
+    // 只等 900ms 就读坐标，读到的是**滑动中的快照**，点击落下时命中体已滑走 ⇒ 假失败。
+    // R1 轮实测：`window_rr` 开窗后 900ms 读到 (706,380)，而停稳后是 (879,411)，差 174px。
+    await waitForSceneSettled(session);
     const opened = await readSnapshot(session);
     const openedPart = opened.parts.find((part) => part.id === id);
     reporter.check(
       `${name} 鼠标点击：open 由 false 翻转为 true`,
       openedPart.open === true,
-      `点击 (${Math.round(target.screen.x)},${Math.round(target.screen.y)}) 后 open=${JSON.stringify(openedPart.open)} progress=${openedPart.progress.toFixed(3)}`,
+      `点击 (${Math.round(target.screen.x)},${Math.round(target.screen.y)}) 后 open=${JSON.stringify(openedPart.open)} progress=${openedPart.progress.toFixed(3)}` +
+        `｜${describeMiss(id, beforeClick, opened)}`,
     );
 
     // 再点一次翻回；部件打开后几何已移动，必须重读坐标
@@ -161,12 +182,13 @@ await run("verify-pick", async ({ session, reporter, options }) => {
       continue;
     }
     await session.mouse.click(again.screen.x, again.screen.y);
-    await delay(SETTLE_MS);
+    await waitForSceneSettled(session); // 同上：等动画停稳再读终态
     const closed = await readSnapshot(session);
     reporter.check(
       `${name} 再次点击：open 由 true 翻回 false`,
       closed.parts.find((part) => part.id === id).open === false,
-      `点击 (${Math.round(again.screen.x)},${Math.round(again.screen.y)}) 后 open=${JSON.stringify(closed.parts.find((part) => part.id === id).open)}`,
+      `点击 (${Math.round(again.screen.x)},${Math.round(again.screen.y)}) 后 open=${JSON.stringify(closed.parts.find((part) => part.id === id).open)}` +
+        `｜${describeMiss(id, opened, closed)}`,
     );
   }
 

@@ -90,13 +90,26 @@ const CASES = [
   { say: "打开车灯", note: "§13.1 别名「车灯」", after: { lights: { headlight: true, taillight: false } } },
 ];
 
+/**
+ * 把「只列出被打开项」的期望补全为**全量**期望：未列出的部件一律视为关闭。
+ *
+ * 必要性（R1 轮实测的脚本缺陷）：CASES 里 `opened([...])` 只写被打开的**子集**（如 4 个车窗），
+ * 而全量比对要求键数相等 ⇒ 子集与 10 键的实际状态**永远不等**，`matches` 恒为假、
+ * 表现为「断言 FAIL 但 diffOf 说状态一致」的自相矛盾。
+ * 补全后既修掉该缺陷，又保留「抓过度触发」的严格性（如「打开车窗」若把车门也开了仍会被抓到）。
+ */
+function normalize(expected, ids) {
+  const full = Object.fromEntries(ids.map((id) => [id, false]));
+  return { ...full, ...(expected ?? {}) };
+}
+
 /** 期望状态与页面快照是否一致（逐键比对，避免 JSON 键序干扰） */
 function matches(snapshot, expected) {
   const sameMap = (actual, wanted) =>
-    Object.keys(wanted).every((key) => actual?.[key] === wanted[key]) &&
-    Object.keys(actual ?? {}).length === Object.keys(wanted).length;
-  if (expected.parts && !sameMap(snapshot.state.parts, expected.parts)) return false;
-  if (expected.lights && !sameMap(snapshot.state.lights, expected.lights)) return false;
+    Object.keys(wanted).length === Object.keys(actual ?? {}).length &&
+    Object.keys(wanted).every((key) => actual?.[key] === wanted[key]);
+  if (expected.parts && !sameMap(snapshot.state.parts, normalize(expected.parts, PART_IDS))) return false;
+  if (expected.lights && !sameMap(snapshot.state.lights, normalize(expected.lights, LIGHT_IDS))) return false;
   if (expected.cameraView && snapshot.state.cameraView !== expected.cameraView) return false;
   if (expected.orbitOnce && snapshot.state.cameraCommand?.type !== "orbit-once") return false;
   return true;
@@ -104,11 +117,12 @@ function matches(snapshot, expected) {
 
 const diffOf = (snapshot, expected) => {
   const lines = [];
-  for (const [key, wanted] of Object.entries(expected.parts ?? {})) {
+  // 同样补全为全量：否则「某个部件**本应关闭却开着**」这类过度触发/漏复位会漏报
+  for (const [key, wanted] of Object.entries(expected.parts ? normalize(expected.parts, PART_IDS) : {})) {
     const actual = snapshot.state.parts?.[key];
     if (actual !== wanted) lines.push(`parts.${key} 期望 ${wanted} 实得 ${actual}`);
   }
-  for (const [key, wanted] of Object.entries(expected.lights ?? {})) {
+  for (const [key, wanted] of Object.entries(expected.lights ? normalize(expected.lights, LIGHT_IDS) : {})) {
     const actual = snapshot.state.lights?.[key];
     if (actual !== wanted) lines.push(`lights.${key} 期望 ${wanted} 实得 ${actual}`);
   }
@@ -314,7 +328,13 @@ await run("verify-voice", async ({ session, reporter }) => {
 
   // ── 4. 错误路径：权限拒绝（§11.1 T6 降级路径）───────────────────────────
   await resetToBaseline(session);
-  await session.evaluate(() => window.__carDisplaySpeechRecognitionMock.instances.at(-1)?.start?.());
+  // **只在未在听时才 start**：mock 刻意实现为「重复 start() 抛 InvalidStateError」（与真实
+  // SpeechRecognition 语义一致，T9-01 已自测）。若链路已经处于 listening，再调一次会直接抛错，
+  // 把整个脚本打断 —— R1 轮实测踩过。故先判 listening 再决定是否驱动。
+  await session.evaluate(() => {
+    const mock = window.__carDisplaySpeechRecognitionMock;
+    if (mock.listening().length === 0) mock.instances.at(-1)?.start?.();
+  });
   const receiversOnError = await session.evaluate(() => window.__carDisplaySpeechRecognitionMock.fail("not-allowed", "用户拒绝麦克风权限"));
   await delay(400);
   const afterError = await readSnapshot(session);
