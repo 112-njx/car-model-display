@@ -18,6 +18,8 @@ import { isTapGesture, pickPartId, raycasterFromScreen } from "./partMapping";
 export const HOVER_COLOR = "#38bdf8";
 const HOVER_EMISSIVE_INTENSITY = 0.9;
 /** OrbitControls 判定"真的转动了"的相机位移阈值（世界单位，车长约 5.65） */
+// T8 集成期注记：本阈值**不再参与点按判定**（原因见下方 endGesture 的长注释），
+// 仅作为 DEV 诊断信号保留。故维持 T5 的原值不动，避免无谓的模块改动。
 const CAMERA_DRAG_EPSILON = 0.01;
 /** 指针在 canvas 内、且非拖拽时才更新悬停 */
 const TOOLTIP_OFFSET = [14, 16];
@@ -217,7 +219,19 @@ export function usePartPick({
       gesture.current = null;
       if (!commit) return;
       const end = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now() };
-      if (active.invalid || cameraMoved.current) return;
+      // 点按判据 = 契约 §13.1 的 `INTERACTION.tapMaxMovePx` / `tapMaxDurationMs`（经 isTapGesture），
+      // 外加"第二根手指落下"标记 active.invalid（双指缩放作废点击候选）。
+      //
+      // T8 集成期移除「相机被带动」硬否决（原为 `|| cameraMoved.current`）——它是**与契约冲突的第二判据**：
+      // OrbitControls 开了 `enableDamping`，rotate 输入逐帧渐进，**手指停下后相机仍在继续转**。
+      // 实测（390×844，`Input.dispatchTouchEvent`，页内埋点）：
+      //   同样 2px 位移，127ms 时相机位移 0.109（通过）、186ms 时 0.1495、265ms 时 0.19（均被否决）；
+      //   0px 位移则任何时长都不否决。
+      // 即该否决实际退化成"**约 150ms 以上一律不算点按**"——比契约的 300ms 更严，
+      // 真机上正常点按（手指自然按 200~400ms）会被全部吞掉，「点击车模控车」在手机上不可用。
+      // 真实拖拽仍由位移阈值拦住：一次有意拖拽位移必然 > 6px → active.invalid。
+      // `cameraMoved` 的采集代码保留，仅作 DEV 诊断信号，不再参与点按判定。
+      if (active.invalid) return;
       if (!isTapGesture(active, end, interaction)) return;
       const hit = pickAt(active.x, active.y);
       if (hit) onPickRef.current?.(hit.id, hit);
