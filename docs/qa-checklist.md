@@ -12,11 +12,38 @@
 
 ## 1. 环境准备
 
+### 1.0 端口分配表（Wave 2 起生效，经项目负责人裁定）
+
+> **背景**：本机曾多次出现「打错服务端」造成的假绿/假阴性（T2 记录 06、T9 记录 T9-02）。
+> 根因有二：① Vite 被顶掉端口后自动换端口；② 本仓库 `package.json` 的 `npm run dev` 是
+> `vite --host 0.0.0.0`，而裸 `npx vite` 默认绑 `127.0.0.1` —— **Windows 允许 `0.0.0.0:P` 与
+> `127.0.0.1:P` 同时监听**，连 `127.0.0.1:P` 时更具体的绑定胜出，于是「端口对了但实例不对」。
+
+| 端口 | 归属 | 启动形态 | 备注 |
+| --- | --- | --- | --- |
+| **5190** | **T9 验收实例** | 见下「T9 验收实例的起法」 | 契约基座自测 / 脚本回归 |
+| **5191** | **T8 集成实例** | `npm run dev -- --port 5191 --strictPort`（在集成分支的 `app/` 下） | 滚动验收的被测对象 |
+| 5173 | T1 手机同局域网联调 | `npm run dev`（带 `--host 0.0.0.0`） | 仅供真机访问 |
+| 5174 / 5181 | **他人实例，禁止使用** | — | 已实测存在；5181 上曾同时有 `0.0.0.0` 与 `127.0.0.1` 两个进程 |
+
+**T9 验收实例的起法**（在 T9 的 worktree 根目录执行，避免 `cd`）：
+
+```bash
+./app/node_modules/.bin/vite app --port 5190 --strictPort --host 127.0.0.1
+```
+
+> **⚠️ 两个已踩过的坑**：
+> 1. Vite 7 的 root 是**位置参数**，不是 `--root` 标志 —— 写 `--root app` 会报
+>    `CACError: Unknown option '--root'`。必须写成 `vite app`。
+> 2. 漏掉位置参数会把 **worktree 根目录**当成 root，`GET /` 返回 **404**（根目录下没有
+>    `index.html`，它在 `app/` 里）。**这正是「先确证实例身份」这条纪律的价值** ——
+>    这个错误在浏览器里看是「页面打不开」，很容易被误读成被测代码的问题。
+
 ### 1.1 起被测页面（二选一）
 
 | 形态 | 命令（在 `app/` 下执行） | 地址 | 说明 |
 | --- | --- | --- | --- |
-| dev（推荐验收用） | `npm run dev -- --port 5173 --strictPort` | `http://127.0.0.1:5173/` | **必须带 `--strictPort`**：本机 5173 常被其他 Vite 实例占用，端口被顶掉后会自动落到 5174，而那个实例上没有你的改动 —— 会得到**假绿**（现象与根因见 `docs/debug.md` T2 记录 06） |
+| dev（推荐验收用） | `npm run dev -- --port 5191 --strictPort` | `http://127.0.0.1:5191/` | **必须带 `--strictPort`**：端口被顶掉后 Vite 会自动换端口，而那个实例上没有你的改动 —— 会得到**假绿**（现象与根因见 `docs/debug.md` T2 记录 06）。端口号按 §1.0 的分配表取 |
 | dist（交付形态） | `npm run build && npm run preview -- --port 4173 --strictPort` | `http://127.0.0.1:4173/` | 验「产物形态」时用；`base:'./'` 生效后 dist 也可直接双击打开 |
 
 > **⚠️ 跑任何脚本/验收前，必须先确证「这个端口上是我的实例」**（T9 记录 T9-02 就踩了这个坑，得到一次假阴性）：
@@ -24,10 +51,14 @@
 >
 > ```bash
 > # 应返回 JS（text/javascript），而不是 text/html 兜底页
-> curl -s -o /dev/null -w "%{size_download} %{content_type}\n" http://127.0.0.1:5173/src/config/carConfig.js
+> curl -s -o /dev/null -w "%{size_download} %{content_type}\n" http://127.0.0.1:5191/src/config/carConfig.js
 > ```
 >
 > 若返回 `2888 B text/html`（index.html 兜底），说明该端口是**别的实例**（很可能是 T2 之前的旧工程，没有 `carConfig.js`），此时页面上不会有 `window.__carDisplayStore`，脚本会以「钩子缺失」失败——那是环境错，不是被测代码错。
+>
+> **注意**：`index.html` 的字节数**不能**用来判断实例身份 —— 本工程自己的 `index.html`
+> 在 contract-v1 上恰好也是 **2888 B**，与兜底页同长。**唯一可靠的判据是
+> `carConfig.js` 返回 `text/javascript`**（真实产物在 40 KB 量级；兜底页必为 `text/html`）。
 
 ### 1.2 起一个带调试端口的浏览器（自动化脚本的前提）
 

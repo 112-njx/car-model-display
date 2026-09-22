@@ -225,6 +225,47 @@
   2. 跑脚本前必须**先确证 dev server 是自己的实例**：用 `curl` 核对一个 contract-v1 专有路径（如 `/src/config/carConfig.js`）返回的是 JS 而非 `text/html`，否则一定得到假阴性/假阳性。此纪律已写入 `docs/qa-checklist.md` §1.1。
   3. 人工配置区 #7（无头浏览器放行）已由人工执行过一次；若该实例被关闭，需重新启动。
 
+### 记录 T9-03 · 2026-09-22 · Wave 2 首跑：四个脚本在真实契约页面上全部跑通；WebGPU 异常归因结案
+
+- **轮次目标**：Wave 2 验收执行段第 0 步——**不等 T8**，在自己的 worktree（`contract-v1` = 契约基座）上起验收实例，把 Wave 1 从未跑过的四个脚本真跑一遍，暴露只有真跑才出现的缺陷。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `docs/qa-checklist.md` | 新增 §1.0 端口分配表（经负责人裁定）+ T9 验收实例的起法与两个坑；§1.1 dev 端口改为按分配表取 5191 |
+  | `docs/debug.md` | 本记录 + 人工配置区 #6/#7 状态更新 |
+  | `app/.vite/t9-probe.mjs` | **临时诊断探针**（位于 `.gitignore` 第 15 行的 `.vite/` 下，`git check-ignore` 已验证被忽略，**不随分支交付**；保留以便复跑） |
+- **端口与实例身份（本机实测）**：
+  - 监听现状：`5174`、`5181` 在监听，且**都已返回真实 `carConfig.js`**。`5181` 上有**两个进程**：`0.0.0.0:5181`(PID 10732) 与 `127.0.0.1:5181`(PID 29668)。
+  - **根因（补全 T9-02 未查清的部分）**：本仓库 `package.json` 的 `npm run dev` = `vite --host 0.0.0.0`，而裸 `npx vite` 默认绑 `127.0.0.1`。Windows 允许 `0.0.0.0:P` 与 `127.0.0.1:P` **同时监听**，连 `127.0.0.1:P` 时**更具体的绑定胜出** —— 于是「端口对了但实例不对」。这正是 T9-02「打错服务端」的成因。
+  - **纪律升级**：验收实例一律显式 `--host 127.0.0.1` + 独占端口（已按裁定分配：T9=5190，T8=5191），并在每次跑脚本前 `curl` 核对 `carConfig.js` 返回 `text/javascript`。
+  - **新增判据修正**：`index.html` 的字节数**不能**用于判断实例身份 —— 本工程自己的 `index.html` 在 contract-v1 上恰好也是 **2888 B**，与兜底页同长。唯一可靠判据是 `carConfig.js` 的 content-type。
+- **关键决策 / 问题**：
+  1. **起服务时踩了两个坑，均由「先确证实例身份」这条纪律当场抓住**：① Vite 7 的 root 是**位置参数**，`--root app` 报 `CACError: Unknown option '--root'`；② 漏掉位置参数时 vite 把 **worktree 根目录**当 root，`GET /` 返回 **404**（`index.html` 在 `app/` 里）。已写入 `qa-checklist.md` §1.0。
+  2. **四个脚本全部真跑通**（`--base-url=http://127.0.0.1:5190/`），无一处崩溃、无时序/序列化缺陷 —— **T9-01 遗留项 1 与 T9-02 遗留项 1 就此闭合**：
+     | 脚本 | 合计 | PASS | FAIL | SKIP | 退出码 | 用时 |
+     | --- | --- | --- | --- | --- | --- | --- |
+     | `verify-parts` | 78 | 76 | **1** | 1 | 1 | 4.5s |
+     | `verify-pick` | 1 | 0 | 0 | 1 | 0 | 45.6s |
+     | `verify-voice` | 1 | 0 | 0 | 1 | 0 | 45.7s |
+     | `verify-camera`（`--fast`） | 20 | 19 | 0 | 1 | 0 | 46.6s |
+     SKIP 全部是设计预期（`verify-pick`/`verify-voice` 因 T5/T6 未集成而整体 SKIP 并打印可操作原因，不假绿；`verify-parts`/`verify-camera` 的集成层 SKIP）。
+  3. **唯一的 FAIL 已归因结案（P2，非 Wave 1 引入，不阻塞 S3）**：`verify-parts` 的「运行期无未捕获异常」断言失败。
+     - **现象**：无头 Edge 下 `three/webgpu` 的 `Textures.updateTexture` → `Bindings._init` **间歇**抛 `TypeError: Invalid value used as weak map key`（观测 0–12 条 / 4s，抖动）。
+     - **归因过程（三次对照实验，探针见 `app/.vite/t9-probe.mjs`）**：
+       1. **强制 WebGL 对照**：CDP 预注入把 `navigator.gpu` 置 `undefined` → 后端 `webgl`，**0 异常**；不注入 → 后端 `webgpu`，12 条异常。→ 异常只在 WebGPU 路径。
+       2. **裸 WebGPU 对照**：绕开 three，直接用裸 WebGPU API 渲染**离屏纹理**（显式 `RENDER_ATTACHMENT|COPY_SRC`）并读回 → `firstPixelBGRA=[229,153,51,255]`，与 `clearValue (0.2,0.6,0.9)` 精确吻合，`uncapturedErrors=[]`。→ **这台无头 Edge 的 WebGPU 本身完全正常**，问题在 three 的 WebGPU 后端 + 本场景。
+       3. **画面影响对照**：用 `Page.captureScreenshot`（合成器输出 = 用户真正看到的）**裁出 3D 画布区域**分析 → WebGPU 模式 252 色 / stdDev 43.3 = **有画面**；WebGL 模式 237 / 39.7 = 有画面。再连拍 6 帧（间隔 400ms），**两种模式亮度均值极差均为 0.00** → **画面完全稳定，无闪烁、无缺件**。
+     - **结论**：异常是**纯控制台噪声，对画面与功能零影响**。归因于 FormDrive 基线代码 —— `StudioCanvas.jsx` 的 `createRenderer` 只对 `await renderer.init()` 加了 try/catch，**渲染期**异常捕不到；非 Wave 1 任何分支引入（T1 记录 04/05、`77dc507` 已登记为「WebGPU 既有异常」）。
+     - **严重级 P2**，责任模块：基线 / T8（§11.1 给 T8 的「集成期小修」权）。影响面：违反人工清单 **A20「控制台干净」**。
+  4. **一次差点误报 P0 的教训（方法论，值得留档）**：第 2 步对照实验里，我曾用 `ctx.drawImage(webgpuCanvas)` 统计画布像素，得到 **全黑**（distinctColors=1, stdDev=0），一度准备按「WebGPU 黑屏」上报 P0。**实际上 WebGPU 画布无法这样拷出内容**，是测量假象。是第 3 步的合成器截图把它证伪的。**教训：判定「画面是否渲染」必须用 `Page.captureScreenshot`（合成器输出），不能用 `drawImage` 拷 WebGPU 画布；且必须裁出 3D 画布区域，否则 DOM UI 的像素会冒充「有画面」。**
+- **自测结果**：上述四脚本实跑数据即本轮自测证据；探针的三种模式对照可复跑（`PROBE_MODE=webgpu|webgl node app/.vite/t9-probe.mjs`）。
+- **commit**：见本轮提交（`docs/qa-checklist.md` §1.0 端口表 + 本记录）
+- **遗留项**：
+  1. **待人工裁定**：`verify-parts` 的「运行期无未捕获异常」断言是否对「已归因的基线 P2 噪声」放行。**我不自行放宽断言凑绿**，已把证据与建议一并上报，等负责人拍板（选项见 `docs/qa-report.md` 的已知偏差一节）。
+  2. **`verify-parts` 的 1 项 SKIP**（T5 未集成）待 T8 合并 `interaction/**` 后重跑。
+  3. `verify-voice` 全部 SKIP 待 T6 合并后重跑；`verify-pick` 待 T5；`verify-camera` 集成层待 T7。
+  4. 人工配置区 #7 已**实际生效**（9222 上无头 Edge 存活，CDP 可连），无需负责人再操作；若该实例被关闭需重启。
+
 ---
 
 ## 需要项目人工配置的地方
@@ -238,5 +279,8 @@
 | 3 | 加载页字节 MB 读数 | 见记录 04，等待人工决策是否修 `VehicleModel.jsx:81`。 | 待处理 |
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
 | 5 | 无头浏览器 CDP 自测放行 | T2 需要用本机 Edge（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）以 `--headless=new --remote-debugging-port=9333` 打开 `http://127.0.0.1:5174/` 做渲染层实测（部件动画 / 灯光发光 / 相机位移）。该命令被本会话的 worktree 隔离守卫拦下（它无法判定命令名不是 git）。**AI 无法自行放行**。请二选一：① 在 `~/.config/safe-chains.toml` 放行该路径/命令；② 自己执行一次（把下面命令里的路径原样粘贴到会话里，前缀 `!`）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\t2-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`（需先在 worktree 的 `app/` 里跑着 `npm run dev`，端口以实际输出为准）。 | 待处理（阻塞 T2 渲染层实测） |
-| 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程（PID 24428）监听，T2 的 dev server 自动落到 **5174**。做 dev 自测时务必以自己实例输出的端口为准，否则会打到别人的工程得到假绿（详见记录 06 的端口陷阱）。若后续多 Agent 并行开发，建议各自显式指定端口。 | 待处理（已规避，登记备查） |
-| 7 | **无头浏览器启动放行（T9 同样受阻，且阻塞面更大）** | 与 #5 同一堵墙：worktree 隔离守卫拒绝执行工作目录外的 `msedge.exe`。**T9 的四个 verify 脚本全部靠 CDP 驱动真实浏览器，无浏览器则一个都跑不了**（Wave 1 出口「契约层断言跑绿」与 Wave 2 全部验收都卡在这里）。请二选一：① 放行 `~/.config/safe-chains.toml` 里的 msedge.exe 路径；② 自己起一次（在会话里用 `!` 前缀粘贴，dev server 端口按实际输出改）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9222 --user-data-dir=C:\Users\112\AppData\Local\Temp\car-display-edge --no-first-run --no-default-browser-check --window-size=1440,900 about:blank`（脚本会依次探测 9222/9333/12319，无需另配）。 | **待处理（阻塞 T9 脚本自测与 Wave 2 全部验收）** |
+| 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程监听，T2 的 dev server 自动落到 **5174**。根因已在 T9-03 补全：`npm run dev` 绑 `0.0.0.0`、裸 `npx vite` 绑 `127.0.0.1`，Windows 允许两者同端口共存，连 `127.0.0.1` 时更具体的绑定胜出。**已由负责人裁定端口分配表**（T9=5190 / T8=5191 / 5173 归 T1 手机联调 / 5174+5181 禁用），见 `docs/qa-checklist.md` §1.0。 | 已解决（端口分配表已裁定） |
+| 7 | 无头浏览器 CDP 自测放行 | worktree 隔离守卫拒绝执行工作目录外的 `msedge.exe`。启动命令：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9222 --user-data-dir=%TEMP%\car-display-edge --no-first-run --no-default-browser-check --window-size=1440,900 about:blank`（脚本会依次探测 9222/9333/12319）。 | **已解决**（9222 上 Edge 153 无头实例存活，T9-03 已实测连通；若被关闭需重启） |
+| 8 | **T8 集成实例请按分配表用 5191** | 滚动验收要求 T9 能 `--base-url` 连到「T8 集成分支的最新代码」且**能确证实例身份**。请 T8 在集成分支的 `app/` 下用 `npm run dev -- --port 5191 --strictPort`，不要用 5173/5174/5181（前者属 T1 手机联调，后两者是他人实例）。 | 待处理（需 T8 遵守） |
+| 9 | **手机真机验收时间** | 需负责人安排手机 Chrome + 同一 Wi-Fi（开发机 WLAN `10.14.6.9`），按 `docs/qa-checklist.md` §3.2 的 B1–B13 逐项勾选。**AI 无法代做**，且我不会替你勾选。其中 B11 真机语音有硬性前提（Web Speech API 需安全上下文），须等 T10b 的 https URL，届时按「阻塞（待 https）」记录。 | 待处理（需约定时间窗） |
+| 10 | **WebGPU 控制台噪声的断言裁定** | `verify-parts` 的「运行期无未捕获异常」断言因基线既有问题失败（P2，已归因结案：画面稳定、功能零影响，详见 T9-03）。**我不自行放宽断言凑绿**。请二选一：① 由 T8 修（让 `StudioCanvas` 的渲染期异常也能回退到 WebGL）；② 明确裁定该条按「已知偏差」记录、不计入脚本全绿判据。 | 待处理（阻塞「四脚本全绿」的字面达成） |
