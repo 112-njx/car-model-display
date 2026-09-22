@@ -186,6 +186,165 @@
 - **commit**：`0a33b2a`
 - **遗留项**：渲染层实测（部件动画 / 灯光发光 / 相机位移）仍待浏览器放行，见人工配置区 #5。
 
+## Wave 1 · T6 语音控车引擎（Web Speech API）
+
+> 分支 `wave1/t6`（worktree `.claude/worktrees/wave1+t6`），基线 `0c41982`（T1 交付）。
+> A 段 = 契约无关阶段（启动即做），B 段 = 接线阶段（`contract-v1` 推送后接入）。
+> **注**：任务书写的是 rebase，但本分支 A 段已推送，rebase 需 force push（纪律第 1 条禁止）→ 实际采用 **merge**，效果等价且不改写历史。
+> 边界：独占 `app/src/voice/**`，其余只读；零新增依赖；不改 `App.jsx`/`main.jsx`/`package.json`/`vite.config.js`。
+
+### 记录 01 · 2026-09-22 10:34 · A 段（1/4）指令词表 + parseCommand 纯函数 + 用例
+
+- **轮次目标**：把「中文指令文本 → 动作计划」做成**纯函数**，不依赖 store 与 carConfig，可在 Node 里直接跑用例；词表覆盖 §6 全部 6 组指令并大幅扩充同义词与 ASR 纠错。
+- **改动文件**：
+  | 文件 | 内容 |
+  | --- | --- |
+  | `app/src/voice/commands.js`（新增） | §13.1 默认表镜像、动词表、范围词、位置词、部位名词、视角/环绕说法、灯光与部件补充别名、同音纠错表、`buildVocabulary()`、`describeActions()`（中文回执）、`executePlan()`（计划→§13.2 action） |
+  | `app/src/voice/parseCommand.js`（新增） | `parseCommand()` / `parseCommandDetailed()` 纯函数 |
+  | `app/src/voice/commandCases.js`（新增） | 80 条用例 + `runCommandCases()` + Node CLI 入口 |
+- **关键决策**：
+  1. **词表分层**：`DEFAULT_*` 只是 §13.1 的镜像兜底，**id/label/aliases 的最终来源仍是 carConfig**（B 段用 `buildVocabulary(carConfig)` 覆盖）；本文件只补充面向语音的结构词（动词/范围/位置/名词/纠错），避免与 T2 的契约表产生两份真相。
+  2. **最长匹配**：词表按 surface 长度降序扫描，保证「左前车窗」不被「车窗」抢走；位置词 × 部位名词在构建期展开成组合词（502 条）。
+  3. **范围词两态**：`全部/所有/四个` → 组动作（`group`）；`前排/后排/左侧/右侧` → 展开成多个 `part` 动作（如「打开左边车窗」= 左前+左后）。
+  4. **「全部关闭」含灯光**：§6 只写「复位所有部件」，未说灯光。按 §13.2 `closeAll()` 的语义（部件 + 灯光全部复位）实现为「三个组 + 两盏灯」的显式计划，同时新增对称的「全部打开」。（已向项目负责人报备，非阻塞。）
+  5. **宁可不做也不做反**：缺动词（「车窗」）、缺部位（「打开」）、未识别、否定句（「不要打开车窗」）一律返回**空计划**并给出中文纠错提示（`REASON_HINTS`），绝不猜测执行。
+  6. **计划形状**在 §13.1 允许的 4 种 type 内：`part`/`group`/`light`/`camera`；「转一下」用 `{type:'camera',command:'orbit-once'}`，预设用 `{type:'camera',view}`。
+- **关键问题（本轮自测发现并修复的 3 个 bug）**：
+  1. **现象**：「把车窗和车门都打开」只开了车门。**根因**：分句的动词继承只向后（`carriedVerb`），首句无动词时被丢弃。**修法**：增加全句首个动词兜底 `fallbackVerb`（`ownVerb || carriedVerb || fallbackVerb`）；视角分句仍只看本句动词，避免「复位」被继承动词误判为非法。
+  2. **现象**：「打开后备箱然后打开大灯」只开了后备箱。**根因**：「然后」不在连接词表，整句被当成一个分句，最长匹配只取到「后备箱」。**修法**：连接词补 `然后/接着/之后/再`。
+  3. **现象**：复位视角回执文案为「切换到复位视角」。**修法**：`hero` 特判为「复位视角」。
+- **自测结果**：
+  - `node app/src/voice/commandCases.js`：**80/80 通过**（§6 指令集 12/12、别名 28、范围 10、复合 9、纠错 9、负例 11）。
+  - 对抗性探针（未进用例集的一次性验证）：「打开车」「你好」「打开空调」均正确拒绝；「后备箱打开」「左前门打开」「四个车窗打开」等动词后置语序正确。
+  - 归一化验证：全角标点、连接词、同音纠错（后辈箱/车床/测面/大登/全不）均生效。
+- **commit**：`a98c732`
+- **遗留项**：
+  1. 「打开天窗」会命中「窗」→ 开全部车窗（模型无天窗部件）。属可接受的近似，暂不处理。
+  2. 「打开空调和车窗」会**部分执行**（只开车窗）。这是「分句各自解析」的必然结果，Toast 会明确回执实际执行了什么，暂不拦截。
+  3. 词表以 §13.1 镜像编写；B 段接入 carConfig 后需复核 label/aliases 与实测是否一致。
+
+### 记录 02 · 2026-09-22 10:37 · A 段（2/4）SpeechRecognition 兼容封装
+
+- **轮次目标**：把 Web Speech API 的浏览器差异、能力探测、权限、错误重试、安全上下文检测封成一层，供 UI 与 B 段状态机使用；同时把 §13.3 ④ 注入点的**底层机制**（可替换构造函数）做好，使 mock 回放能走完整链路。
+- **改动文件**：`app/src/voice/recognition.js`（新增）；`app/tmp/t6-recognition.test.mjs`（新增，**被 .gitignore 忽略，不进仓库**）。
+- **关键决策**：
+  1. **注入点做在封装层**：`setRecognitionCtor(ctor|null)` 是 `window.__carDisplayVoiceInject` 的底层实现（B 段只做一层 global 挂载 + store 同步）。注入后 `detectSupport()` 直接返回 `supported:true, secure:true`——**即使当前是 http 非安全上下文**，这样 T9 在 headless http 下回放 mock 不会被降级分支拦掉（§13.3 ④ 的硬要求）。
+  2. **兼容 `new` 与工厂两种注入形式**：`instantiate()` 先试 `new Ctor()`，失败（箭头函数）再试 `Ctor()`，避免 T9 写 mock 时踩「箭头函数不可 new」的坑。
+  3. **错误分级**：`no-speech / network / audio-capture` 可重试（自动重启，退避 400ms×n 上限 2s，最多 3 次）；`not-allowed / service-not-allowed / language-not-supported / bad-grammar` 致命不重试，直接给中文权限/环境提示。拿到有效定稿结果即把重试计数复位（长会话不会被偶发噪声耗尽重试额度）。
+  4. **参数在 `start()` 之前写入实例**：这是 mock 实现能读到 `lang/continuous/interimResults/maxAlternatives` 的前提，已在《挂载说明》里写明给 T9。
+  5. **`maxAlternatives: 3`**：定稿结果带多候选，B 段可逐个尝试解析（挑第一条能解析的），显著提升 ASR 误识下的命中率。
+  6. **测试钩子 `setSupportOverrideForTest()`**：仅用于沙盒页演示「不支持 / 非安全上下文」两条降级路径，默认 null 不影响主链路。
+- **关键问题（本轮自测发现并修复）**：
+  1. **现象**：定稿后状态为 `processing` 时再次调用 `start()`，会**新建第二个识别实例**（两路麦克风采集）。**根因**：`start()` 的守卫只判断 `state === 'listening' | 'starting'`，而拿到定稿后状态已是 `processing`。**修法**：守卫改为 `if (this.wantListening && this.instance) return true`，覆盖全部「已在监听」的中间态。
+  2. **测试夹具自身两处错误**（非产品缺陷，记录备查）：非安全场景夹具的 `hostname` 仍写 `localhost`，命中「localhost 视为安全上下文」的兜底分支；`fakeBrowser({ctor: undefined})` 因 JS 默认参数规则回落到 Mock，导致「无 API」用例失真。均已修正夹具。
+  3. **Node 24 的 `globalThis.navigator` 是只读 getter**，`globalThis.navigator = {...}` 抛 TypeError，需用 `Object.defineProperty` 覆盖。
+- **自测结果**：
+  - `node app/tmp/t6-recognition.test.mjs`：**22 项断言全部通过**——能力探测 4 项（含 Firefox/非安全上下文/测试钩子）、注入点 4 项（http 下注入即 supported、传 null 恢复、非法值抛错、工厂函数）、识别链路 6 项（参数写入、多候选、实时字幕、重复 start 不重建、stop）、重试与致命错误 4 项、权限请求 3 项。
+  - `node app/src/voice/commandCases.js`：80/80 仍全绿（无回归）。
+  - 权限路径已验证：`getUserMedia` 授权后**立即释放音轨**（否则麦克风指示灯常亮）。
+- **commit**：`960f460`
+- **遗留项**：
+  1. 真实浏览器的识别行为（Chrome/Edge 的 `onend` 时机、`continuous` 在安卓 Chrome 上的表现）只能真机确认，已登记人工配置区。
+  2. `audio-capture` 目前按「可重试」处理（可能是设备被占用，重试有意义）；若真机表现为永久无设备，真机验收后再决定是否改为致命。
+
+### 记录 03 · 2026-09-22 10:50 · A 段（3/4）VoiceButton + 样式 + 语音播报 + 沙盒自测页
+
+- **轮次目标**：把「能看见、能点、能自测」的部分做完——纯 props 的 `VoiceButton`（录音波纹/实时字幕/状态文案/降级提示）、独立样式、可选 SpeechSynthesis 播报、以及一个**不依赖 store** 的自测沙盒页。
+- **改动文件**：`app/src/voice/VoiceButton.jsx`、`voice.css`、`synthesis.js`、`sandbox.jsx`、`voice.sandbox.html`（均新增）；`parseCommand.js`（新增 `parseAlternatives` 多候选择优）。
+- **关键决策**：
+  1. **VoiceButton 是纯展示组件**（props 驱动、不 import store），因此沙盒页能脱离 T2 契约独立自测；B 段只需把 `useVoiceControl` 的返回值摊给它。
+  2. **沙盒页靠 Vite dev server 直接服务**：`app/src/voice/voice.sandbox.html` → `http://localhost:<port>/src/voice/voice.sandbox.html`，**零 vite.config 改动**（§12.2 未给 T6 该文件的写权限）。实测 200 可访问。
+  3. **`parseAlternatives` 多候选择优**：ASR 给 3 条候选，逐条尝试解析，取第一条能出计划的——「打开车床」这类误识别能被第二条「打开车窗」救回。沙盒已实测该路径。
+  4. **样式可被 T4 token 覆盖**：颜色/圆角/间距集中在 `.cd-voice` 的自定义属性上，T8 集成期只需覆盖变量，不必改 `voice.css`。
+  5. **沙盒页自带假 store**：`executePlan` 的 api 用局部 React state 实现（action 名与 §13.2 一致），既验证了计划→动作的映射，又不需要真 store；B 段把这套 api 换成真 store 即可。
+- **关键问题（本轮自测发现并修复）**：
+  1. **`npm run dev` 起不来**：worktree 里没有 `node_modules`（被 .gitignore 忽略）。**修法**：在 worktree 内 `npm install --no-audit --no-fund`（20s/83 包），**lockfile 零改动**（已核对 `git status`）。注意：不要用目录联接共享主工作树的 `node_modules`——多个 Agent 并发跑 dev 会争抢 `node_modules/.vite` 依赖缓存。
+  2. **dev server 端口不是 5173**：5173/5174/5175 已被其他并行会话占用，Vite 自动退到 **5176**。第一次自测连的是 5173（别人的主工作树），拿到的是主应用页面（`/src/voice/*` 全部回退到 index.html），导致「页面无 `.cd-voice`」而挂死。**修法**：以 dev server 日志里的实际端口为准（见人工配置区说明）。
+  3. **CDP 自测挂死无输出**：命令写成 `node x.mjs 2>&1 | tail -70`，`tail` 会缓冲到进程结束，导致看不到任何进度、误判为「无输出」。**修法**：改为重定向到文件，并给脚本加 150s 看门狗强制退出。
+  4. **`Execution context was destroyed`**：连接 CDP 时页面尚在导航/HMR 重载，`Runtime.evaluate` 落在旧执行上下文。**修法**：evaluate 包装为重试（最多 8 次）。
+  5. **断言写错 2 处**（非产品缺陷）：`bumpInteraction` 期望值漏算「全部关闭」这一次；`.kv dd[6]` 取到的是别的卡片字段。已改为「与操作前计数比较」+「按卡片定位字段」。
+- **自测结果**：
+  - **headless Edge 153 + CDP 驱动沙盒页：35 项断言全部通过**（1 页面渲染与用例集 6 项、2 手动输入全链路 9 项、3 负例不误动作 5 项、4 mock 注入链路 6 项、5 降级路径 9 项、6 无 console error）。
+  - 覆盖到的真实链路：`「打开左前车窗」→ 仅左前车窗开（其余 3 窗不动）`、`「打开所有车窗」→ 4 窗全开`、`「打开大灯」→ 大灯亮`、`「看侧面」→ profile`、`「转一下」→ 环绕 +1`、`「全部关闭」→ 部件全关 + 灯光全灭`、`「打开」/「今天天气不错」→ 空计划 + 中文纠错提示`、`注入 mock 后 supported/injected 变 true 且回放驱动了状态`、`强制「不支持」/「非安全上下文」两条降级路径的按钮禁用与中文提示`。
+  - **`npm run build`：✅ 6.85s 通过**（T6 未改任何构建配置，产物与 T1 一致）。
+  - **额外验证**：用仓库外临时配置把 `voice.sandbox.html` 加入构建输入，**voice 模块单独打包成功**（`voiceSandbox.js` 42.01 kB + `voiceSandbox.css` 5.76 kB，5.58s）——证明 T6 代码真能编译打包，而非「因无人 import 而侥幸通过」；也证明 T8/T10a 只要在 `rollupOptions.input` 加一行即可把沙盒页打进 `dist`。临时配置在 `app/tmp/`（被 .gitignore 忽略，未进仓库）。
+- **commit**：`5ae3ef5`
+- **遗留项**：
+  1. 沙盒页**不在 `npm run build` 产物内**（需改 `vite.config.js`，T6 无权）。已在《挂载说明》给出给 T8/T10a 的一行配置。
+  2. 真机麦克风识别未测（headless 无麦克风、本机无 Chrome），登记人工配置区。
+  3. 沙盒页的假 store 与 B 段的真 store 是两套 api 实现（同名 action），B 段接线后需再跑一次同样的 35 项断言。
+
+### 记录 04 · 2026-09-22 10:58 · A 段（4/4）词表加固 + 用例扩充 + 《挂载说明》
+
+- **轮次目标**：`contract-v1` 未推送（已确认 `git ls-remote` 为空），按任务书「不要空转」的要求：加固边界用例、修正一处会**执行错动作**的精度问题、写出《挂载说明》初稿。
+- **改动文件**：`app/src/voice/commands.js`（新增 `UNSUPPORTED_TERMS` + 词条注册 + `unsupported-part` 提示）、`parseCommand.js`（拒绝 `unsupported` 目标）、`commandCases.js`（80 → 108 条）；新增 `docs/mount-t6-voice.md`。
+- **关键决策 / 问题**：
+  1. **【本轮最重要的修正】「打开天窗」会执行错动作**。现象：说「打开天窗」→ 因词表最长匹配命中「窗」→ **打开全部车窗**。同类问题：「打开挡风玻璃」→ 开全部车窗、「打开氛围灯」→ 开大灯、「锁上车门锁」→ 开全部车门。根因：词表只认「能做什么」，没有「本车模没有什么」。修法：新增 `UNSUPPORTED_TERMS`，在 `buildVocabulary()` 里**最先注册**（保证同长度时优先于部位词），`parseFragment` 命中即返回 `unsupported-part` 并给出中文提示（"本车模没有这个部件或功能…"）。这比"做错动作"重要得多——语音场景里用户看不到按钮，做反了无法察觉。
+  2. **用例集从 80 扩到 108**：新增 14 条别名（动词后置、熄灭/点亮、视角复位、绕车一圈等）、8 条纠错（车创/前贝箱/伟灯/后登/装一圈/全不/引形盖/侧脸）、7 条「本车模没有的功能」负例。
+  3. **《挂载说明》独立成文**（`docs/mount-t6-voice.md`），不塞进 `debug.md`：其中「给 T9 的 mock 契约」需要精确到方法名、属性写入时机、`results` 形状与事件顺序，写成清单更便于 T9 直接照着写 mock。文件名带 `t6-voice` 前缀，避免与其它 Agent 的 `docs/*.md` 冲突。
+- **自测结果**：
+  - `node app/src/voice/commandCases.js`：**108/108 通过**（§6 指令集 13、别名 42、范围 10、复合 9、纠错 17、负例 17）。
+  - **headless Edge + CDP 重跑沙盒页：35 项断言全部通过**（含新增负例后的回归；用例总数断言已改为动态 N/N）。
+  - `npm run build`：本记录未改构建相关文件，构建状态沿用记录 03 的 ✅。
+- **commit**：（见下一条提交）
+- **遗留项**：
+  1. **记录 03 的遗留项 1（「打开天窗」误开全部车窗）已在本轮修复**，该遗留项关闭。
+  2. 记录 03 的遗留项 2、3（真机麦克风、沙盒页假 store 与真 store 两套 api）仍然有效。
+  3. 仍未做的：B 段接线（`useVoiceControl.js` + `window.__carDisplayVoiceInject`），等 `contract-v1` 推送。若超过 1 天未推送，按 §12.4 预案上报人工介入。
+
+### 记录 05 · 2026-09-22 11:05 · A 段补强：抽出 store 无关的状态机控制器（为 B 段去重）
+
+- **轮次目标**：`contract-v1` 仍未推送（`git ls-remote` 为空）。按任务书「不要空转」，做一件对 B 段有实质价值的事：把沙盒里那套「识别 → 解析 → 执行 → 状态/回执」逻辑抽成**框架无关、store 无关**的控制器，让沙盒与主应用共用同一份实现。
+- **改动文件**：新增 `app/src/voice/voiceController.js`；`app/src/voice/sandbox.jsx` 改为使用控制器（删掉页面内自建的状态机，约 −60 行重复逻辑）。
+- **关键决策**：
+  1. **为什么要抽**：原计划 B 段的 `useVoiceControl.js` 会把沙盒里那套识别器事件接线**再写一遍**（订阅 status/interim/result/error/end、权限请求、执行计划、回执、播报）。两份实现意味着沙盒里跑过的 35 项断言**并不覆盖** B 段真正发布的代码——这正是「自测通过但集成后出问题」的典型来源。抽成控制器后，沙盒与主应用各自只做一层薄适配（沙盒接假 store、应用接真 store），断言覆盖的就是同一份代码。
+  2. **控制器的依赖面只有 §13.2 冻结的 action 名**（`setPart/openGroup/closeGroup/setLight/setCameraView/orbitOnce/bumpInteraction`），因此**现在就能写、现在就能测**，不必等 T2 的代码——这正是 §12.1「消费方需要的是字段名与 action 签名」的落地。
+  3. **对外只发一个 `onChange(snapshot)`**：快照就是 `VoiceButton` 的 props 来源，React 侧只需 `setSnap`；`status` 映射到 §13.2 的 `voice.status` 枚举（`idle/requesting/listening/processing/error/unsupported`），B 段可直接写进 store。
+  4. **`injectRecognition(ctor|null)` 收敛进控制器**：注入 → 重建能力探测 → 快照的 `supported/injected` 立即更新。B 段只需把它挂到 `window.__carDisplayVoiceInject` 上，并同步 `store.voice.supported`。
+  5. **保留沙盒的 DOM 结构不变**：原有 35 项 CDP 断言**未作任何修改**直接复验，用来证明「换实现不换行为」。
+- **自测结果**：
+  - **headless Edge + CDP：35 项断言全部通过（断言零改动）** —— 覆盖能力探测、手动输入全链路、负例不误动作、mock 注入回放、两条降级路径、无 console error。
+  - `node app/src/voice/commandCases.js`：108/108（本轮未动用例，回归确认）。
+  - **沙盒页纳入构建输入的打包验证：✅ 20.94s 通过**（`voiceController.js` 一并编译进 `voiceSandbox` chunk）。
+  - `npm run build`：本轮未改构建相关文件，状态沿用记录 03 的 ✅（B 段接线前会再跑一次）。
+- **commit**：（见下一条提交）
+- **遗留项**：
+  1. B 段只剩两件事：① 用真实 store 的 action 替换沙盒的假 api（薄适配）；② 挂 `window.__carDisplayVoiceInject` + 同步 `store.voice`。控制器已就绪并已验证。
+  2. 仍等 `contract-v1`。若超过 1 天未推送，按 §12.4 预案上报人工介入（记录 04 已记）。
+
+---
+
+## Wave 1 · T6 语音控车引擎（Web Speech API）· B 段
+
+### 记录 06 · 2026-09-22 11:20 · B 段接入 contract-v1（用 merge 而非 rebase）
+
+- **轮次目标**：接入 T2 的契约层，完成 `useVoiceControl` + `window.__carDisplayVoiceInject`，端到端自测。
+- **关键决策 / 问题**：
+  1. **【与任务书的偏差，已上报】** 任务书写「`git fetch origin contract-v1` 并 rebase」，但 `wave1/t6` 的 A 段 4 次提交**已经推送**，rebase 会重写历史、必须 force push——而纪律第 1 条明确禁止 force push / 改写历史。**实际改用 `git merge origin/contract-v1`**：效果等价（我的工作叠在 T2 之上、T8 合并时无差别），且无需 force push。冲突只有 `docs/debug.md` 一处（追加型共享日志），已按「两边都保留」解决（T2 段落在前、T6 段落在后，人工配置区行号顺延）。
+  2. **契约核对结论**：T2 的 `carConfig.js` / `useCarStore.js` 与 §13.2 逐项一致（action 名与签名、`voice` 片字段、`carStore` 句柄、三个派生纯函数）。两点值得记：
+     - `isAllClosed()` 的语义是「**部件全关且灯光全灭**」、`closeAll()` 也是「部件 + 灯光」——这**印证了我把「全部关闭」实现为含灯光的决定是对的**（记录 01 的关键决策 4 从"我的判断"升级为"与契约一致"）。
+     - `voice.lastCommand` / `error` 初值是 `null`（不是空串），故 `syncVoiceState` 对空值写 `null`。
+  3. **`lastCommand` 语义定案**：契约文档未细化。定为「**最近一条成功执行的指令**」，识别失败时**不改写**（保持上一条）。理由：失败即未执行，清成 `null` 看起来像缺陷；识别到的原文已在 `transcript` 里。
+  4. **沙盒改为双模式**：新增「真 store（VoiceControl）」模式，直接挂载 `<VoiceControl/>`，走 `useVoiceControl` → carConfig 词表 → 真 store → 真 toast。这样在**不碰 `App.jsx`** 的前提下就能端到端验证 B 段接线。两种模式共用同一套 DOM 结构与同一套断言。
+- **关键问题（本轮自测抓出的 1 个真 bug + 4 个自测环境问题）**：
+  1. **【真 bug，最重要】注入后整条链路静默失效**。现象：点「注入回放 mock」后点麦克风，状态**永远停在「正在请求麦克风权限…」**，mock 一直在回放但**一条指令都没执行**（`store.voice.lastCommand` 为 null、toast 0 条、部件全关）。根因：`voiceController.injectRecognition()` 里调了 `recognizer.destroy()`——那会**清空识别器的事件监听器**，而控制器还要继续复用同一个识别器实例（只是换掉它内部 new 出来的构造函数），于是此后所有 `status`/`result` 事件都收不到。修法：改为**不 destroy**；若正在聆听则 `abort()` 当前会话 → 换实现 → 用新实现重新 `start()`。
+     **为什么之前没抓到**：A 段那版沙盒的 mock 断言太弱（只检查日志里有没有 `mock 回放` 字样与 chip 是否存在，而这两者都不依赖控制器真正执行）。本轮把断言换成「日志里必须出现 **`识别 执行：`** 前缀」——该前缀只可能由识别结果链路产生（手动输入的前缀是 `手动输入 执行：`），才把这个 bug 逼出来。
+  2. **调试端口与其他 Agent 撞车**：自测脚本原先固定用 9333/9335，结果连到了**别人（T2）的 Edge 实例**上（页面是 `127.0.0.1:5180`），表现为「找不到我的页面 target」。修法：改用 `--remote-debugging-port=0` + 读 user-data-dir 下的 `DevToolsActivePort` 拿实际端口，随机且必定是自己的实例；退出时用 `taskkill /F /T /PID` 杀整棵进程树（只 kill 父进程会留下 headless 子进程堆积）。
+  3. **dev server 端口**：5173/5174/5175 均被其他会话占用，T6 的实例落在 **5176**（T2 也踩过同一个坑，落在 5174）。
+  4. **`carConfig.js` 无法在 Node 里直接 import**（用了 Vite 的 `import.meta.env.BASE_URL`），因此「换 carConfig 词表后用例是否仍全绿」这项校验只能在浏览器里做——已在沙盒用例卡里加了 carConfig 词表一行。
+  5. **3 处断言写错**（非产品缺陷）：把 mock 回放块插进场景函数后，第 5 节读到了「回放之后」的状态；「打开」属 `missing-target` 而非 `unrecognized`，提示文案不同；`.kv dd` 索引取到别的卡片。均已修正。
+- **自测结果**：
+  - **沙盒页双模式全链路：76 项断言全部通过**（headless Edge 153 + CDP）。含：默认词表与 **carConfig 词表各 108/108** 用例、两种模式各 11 项链路断言 + 7 项负例 + 7 项 mock 回放、真 store 的 `voice`/`toast` 接线 5 项、降级路径 9 项、0 console error。
+  - `node app/src/voice/commandCases.js`：108/108。
+  - `node app/tmp/t6-recognition.test.mjs`：22 项通过（回归）。
+  - **`npm run build`：✅ 13.96s**；**沙盒页纳入构建输入：✅ 21.12s**。
+  - **合并后主应用冒烟：14 项通过**——canvas 正常、无模块解析错误、§13.3 三个钩子（`__carDisplayStore` / `__carDisplaySceneAudit` / `__carDisplayCameraAudit`）自动安装、store 契约字段齐（parts 10 / lights 2 / cameraView hero / voice 片）、`setPart` 与 `closeAll` 可驱动、排除 WebGPU/headless 噪声后控制台 0 错误。
+- **commit**：（见下一条提交）
+- **遗留项**：
+  1. **真机麦克风识别仍未测**（headless 无麦克风、本机无 Chrome），登记人工配置区 #7。
+  2. T9 的 `verify-voice.mjs` 尚未跑（属 T9），《挂载说明》§4 已给出完整 mock 契约与可复用用例集。
+  3. `voice/voice.sandbox.html` 仍不在 `npm run build` 产物内（需改 `vite.config.js`，T6 无权），已给 T8/T10a 一行配置。
+
 ---
 
 ## 需要项目人工配置的地方
@@ -200,3 +359,6 @@
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
 | 5 | 无头浏览器 CDP 自测放行 | T2 需要用本机 Edge（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）以 `--headless=new --remote-debugging-port=9333` 打开 `http://127.0.0.1:5174/` 做渲染层实测（部件动画 / 灯光发光 / 相机位移）。该命令被本会话的 worktree 隔离守卫拦下（它无法判定命令名不是 git）。**AI 无法自行放行**。请二选一：① 在 `~/.config/safe-chains.toml` 放行该路径/命令；② 自己执行一次（把下面命令里的路径原样粘贴到会话里，前缀 `!`）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\t2-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`（需先在 worktree 的 `app/` 里跑着 `npm run dev`，端口以实际输出为准）。 | 待处理（阻塞 T2 渲染层实测） |
 | 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程（PID 24428）监听，T2 的 dev server 自动落到 **5174**。做 dev 自测时务必以自己实例输出的端口为准，否则会打到别人的工程得到假绿（详见记录 06 的端口陷阱）。若后续多 Agent 并行开发，建议各自显式指定端口。 | 待处理（已规避，登记备查） |
+| 7 | **T6 真机麦克风授权 + §6 指令集识别验收** | 本机 headless 无麦克风、无 Chrome，AI **无法代做**。请在 **https 或 localhost** 的 **Chrome / Edge** 中打开沙盒页（或集成后的主页面），授权麦克风后逐条念 §6 指令集（打开/关闭车窗、打开左前门、关闭右后门、打开前/后备箱、打开/关闭大灯、转一下、看侧面、看正面、全部关闭），确认识别与执行正确。 | 待处理（需真机） |
+| 8 | **T6 沙盒页访问地址（端口不固定）** | 本机 5173/5174/5175 已被其他并行会话的 dev server 占用，T6 的 dev server 实际落在 **5176**：`http://localhost:5176/src/voice/voice.sandbox.html`。每次启动以 Vite 日志打印的端口为准（日志会写 `Port 5173 is in use, trying another one...`）。 | 待处理（每次启动需确认端口） |
+| 9 | **手机端语音测试需 https** | 局域网 `http://10.14.6.9:<port>` 属**非安全上下文**，Web Speech API 在手机上不可用（页面会显示中文降级提示，属预期行为）。手机真机语音验收须等 T10b 的 https 在线地址；开发期仅可用桌面 Chrome/Edge 的 localhost。 | 待处理（依赖 T10b） |
