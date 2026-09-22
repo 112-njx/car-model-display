@@ -22,6 +22,7 @@ import {
   splitFragments,
 } from "./commands.js";
 
+
 /** 在文本中找第一个（最长的）命中词条。词表已按 surface 长度降序排好。 */
 function matchEntry(normalized, entries) {
   for (const entry of entries) {
@@ -69,6 +70,9 @@ function allActions(vocabulary, open) {
 function parseFragment(fragment, vocabulary, carriedVerb, fallbackVerb) {
   const target = matchEntry(fragment, vocabulary.entries);
   const ownVerb = matchVerb(fragment, vocabulary.verbs);
+
+  // 本车模没有的部件/功能：直接拒绝（否则「天窗」会命中「窗」而误开全部车窗）
+  if (target && target.kind === "unsupported") return { reason: "unsupported-part" };
 
   // 视角 / 环绕：不带「打开/关闭」。若同句出现开关动词，说明是误识别，不执行。
   // 注意这里只看本分句自己的动词——继承来的动词不应把「复位」误判成非法指令。

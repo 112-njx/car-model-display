@@ -77,6 +77,20 @@ export const COMMAND_CASES = [
   { group: "B 别名", text: "看前脸", expect: [{ type: "camera", view: "front" }] },
   { group: "B 别名", text: "回到默认视角", expect: [{ type: "camera", view: "hero" }] },
   { group: "B 别名", text: "看细节", expect: [{ type: "camera", view: "detail" }] },
+  { group: "B 别名", text: "把左后门打开", expect: [{ type: "part", id: "door_lr", open: true }] },
+  { group: "B 别名", text: "开启后备箱", expect: [{ type: "part", id: "trunk", open: true }] },
+  { group: "B 别名", text: "关上引擎盖", expect: [{ type: "part", id: "frunk", open: false }] },
+  { group: "B 别名", text: "把大灯关了", expect: [{ type: "light", id: "headlight", on: false }] },
+  { group: "B 别名", text: "把所有的窗户都降下来", expect: [{ type: "group", id: "windows", open: true }] },
+  { group: "B 别名", text: "切换到正面", expect: [{ type: "camera", view: "front" }] },
+  { group: "B 别名", text: "视角复位", expect: [{ type: "camera", view: "hero" }] },
+  { group: "B 别名", text: "绕车一圈", expect: [{ type: "camera", command: "orbit-once" }] },
+  { group: "B 别名", text: "旋转一下", expect: [{ type: "camera", command: "orbit-once" }] },
+  { group: "B 别名", text: "打开右前车门", expect: [{ type: "part", id: "door_rf", open: true }] },
+  { group: "B 别名", text: "关闭副驾车窗", expect: [{ type: "part", id: "window_rf", open: false }] },
+  { group: "B 别名", text: "打开司机位车窗", expect: [{ type: "part", id: "window_lf", open: true }] },
+  { group: "B 别名", text: "熄灭大灯", expect: [{ type: "light", id: "headlight", on: false }] },
+  { group: "B 别名", text: "点亮尾灯", expect: [{ type: "light", id: "taillight", on: true }] },
 
   // ── C. 范围词展开 ──
   { group: "C 范围", text: "打开四个车窗", expect: [{ type: "group", id: "windows", open: true }] },
@@ -234,6 +248,14 @@ export const COMMAND_CASES = [
     { type: "light", id: "taillight", on: false },
   ] },
   { group: "E 纠错", text: "打开车们", expect: [{ type: "group", id: "doors", open: true }] },
+  { group: "E 纠错", text: "关闭车创", expect: [{ type: "group", id: "windows", open: false }] },
+  { group: "E 纠错", text: "打开前贝箱", expect: [{ type: "part", id: "frunk", open: true }] },
+  { group: "E 纠错", text: "打开伟灯", expect: [{ type: "light", id: "taillight", on: true }] },
+  { group: "E 纠错", text: "关闭后登", expect: [{ type: "light", id: "taillight", on: false }] },
+  { group: "E 纠错", text: "装一圈", expect: [{ type: "camera", command: "orbit-once" }] },
+  { group: "E 纠错", text: "打开全不车窗", expect: [{ type: "group", id: "windows", open: true }] },
+  { group: "E 纠错", text: "打开引形盖", expect: [{ type: "part", id: "frunk", open: true }] },
+  { group: "E 纠错", text: "看侧脸", expect: [{ type: "camera", view: "profile" }] },
 
   // ── F. 负例：必须返回空计划（绝不误动作）──
   { group: "F 负例", text: "", expect: [] },
@@ -247,6 +269,13 @@ export const COMMAND_CASES = [
   { group: "F 负例", text: "打开正面", expect: [] },
   { group: "F 负例", text: "不要打开车窗", expect: [] },
   { group: "F 负例", text: "打开后备箱和", expect: [{ type: "part", id: "trunk", open: true }] },
+  // 本车模没有的功能：必须拒绝，绝不能因含「窗」「玻璃」「灯」「车门」而误动作
+  { group: "F 负例", text: "打开天窗", expect: [] },
+  { group: "F 负例", text: "打开挡风玻璃", expect: [] },
+  { group: "F 负例", text: "打开氛围灯", expect: [] },
+  { group: "F 负例", text: "打开雾灯", expect: [] },
+  { group: "F 负例", text: "锁上车门锁", expect: [] },
+  { group: "F 负例", text: "播放音乐", expect: [] },
 ];
 
 /** 结构化深比较（数组顺序敏感，对象键顺序不敏感）。 */
