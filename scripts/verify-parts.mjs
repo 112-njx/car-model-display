@@ -25,7 +25,9 @@ import {
   run,
   delay,
   waitForHooks,
+  waitForIntegrationSignals,
   classifyRuntimeNoise,
+  checkNoReload,
 } from "./lib/cdp.mjs";
 
 const TERMINAL_TOLERANCE = 0.01;
@@ -41,6 +43,13 @@ await run("verify-parts", async ({ session, reporter }) => {
     `页面已就绪：store=${initial.hasStore} sceneAudit=${initial.hasSceneAudit} ` +
       `cameraAudit=${initial.hasCameraAudit} voiceInject=${initial.hasVoiceInject}`,
   );
+  // ── 0.1 等 T5 的 parts 审计源注册 ────────────────────────────────────────
+  // **必须在读 baseline 之前等**：`partGeometry`（bbox）由 T5 在 GLB 加载完成后注册，
+  // 而本工程 GLB 有 22 MB。R1 轮实测踩过——不等就读，会把「模型还没加载完」误判成
+  // 「T5 未集成」，得到**假 SKIP**。超时后仍继续，由下方集成层断言据 signals 判 SKIP/FAIL。
+  const signals = await waitForIntegrationSignals(session, { require: ["partGeometry"] });
+  reporter.info(`集成信号：${JSON.stringify(signals)}`);
+
   reporter.check("审计钩子 __carDisplayStore 存在", initial.hasStore, `hasStore=${initial.hasStore}`);
   reporter.check("审计钩子 __carDisplaySceneAudit() 存在", initial.hasSceneAudit);
   reporter.check("审计钩子 __carDisplayCameraAudit() 存在", initial.hasCameraAudit);
@@ -123,6 +132,7 @@ await run("verify-parts", async ({ session, reporter }) => {
           return part.open && part.progress >= 0.99 ? part : false;
         },
         { timeout: SETTLE_TIMEOUT_MS, interval: 60, label: `${id} 打开后 progress 收敛到 1` },
+        id,
       );
     } catch (error) {
       reporter.info(`${id} 打开后未在 ${SETTLE_TIMEOUT_MS}ms 内收敛：${error.message.slice(0, 120)}`);
@@ -157,6 +167,7 @@ await run("verify-parts", async ({ session, reporter }) => {
           return !part.open && part.progress <= 0.01 ? part : false;
         },
         { timeout: SETTLE_TIMEOUT_MS, interval: 60, label: `${id} 关闭后 progress 收敛到 0` },
+        id,
       );
     } catch (error) {
       reporter.info(`${id} 关闭后未在 ${SETTLE_TIMEOUT_MS}ms 内收敛：${error.message.slice(0, 120)}`);
@@ -174,7 +185,8 @@ await run("verify-parts", async ({ session, reporter }) => {
   const fractional = transitions.find((entry) =>
     entry.samples.some((value) => value > TERMINAL_TOLERANCE && value < 1 - TERMINAL_TOLERANCE),
   );
-  const geometryRegistered = (baseline.parts ?? []).some((part) => Array.isArray(part.bbox));
+  const geometryRegistered =
+    signals.partGeometry || (baseline.parts ?? []).some((part) => Array.isArray(part.bbox));
   if (fractional) {
     reporter.pass(
       "集成层：过渡期采到真实动画进度（0<progress<1）",
@@ -183,7 +195,8 @@ await run("verify-parts", async ({ session, reporter }) => {
   } else if (!geometryRegistered) {
     reporter.skip(
       "集成层：过渡期采到真实动画进度（0<progress<1）",
-      "T5 未集成（parts[].bbox 全为 null，未注册 parts 审计源）——契约层 progress 缺省为 open?1:0",
+      "T5 未集成（等满集成信号超时后 parts[].bbox 仍全为 null，未注册 parts 审计源）" +
+        "——契约层 progress 缺省为 open?1:0",
     );
   } else {
     reporter.fail(
@@ -255,11 +268,26 @@ await run("verify-parts", async ({ session, reporter }) => {
     Object.keys(after.state.parts).length === 10 && Object.keys(after.state.lights).length === 2,
     `parts=${Object.keys(after.state.parts).length} lights=${Object.keys(after.state.lights).length}`,
   );
+  // 只比语义终态（id + open + 灯光 on + cameraView），**不比 progress**：
+  // T5 集成后 progress 是连续变化的真实动画值，任何仍在收尾的部件都会让全量 JSON 比对假失败
+  // （R1 轮实测：closeAll 之后残留的收尾动画导致本条误报 FAIL）。
+  const semantic = (snapshot) => ({
+    parts: (snapshot.parts ?? []).map(({ id, open }) => ({ id, open })),
+    lights: (snapshot.lights ?? []).map(({ id, on }) => ({ id, on })),
+    cameraView: snapshot.cameraView,
+  });
+  const beforeSemantic = semantic(before);
+  const afterSemantic = semantic(after);
   reporter.check(
-    "未知 id 不改变 audit 终态",
-    JSON.stringify(after.parts) === JSON.stringify(before.parts) && after.cameraView === before.cameraView,
-    `cameraView ${JSON.stringify(before.cameraView)} → ${JSON.stringify(after.cameraView)}`,
+    "未知 id 不改变 audit 终态（比 id/open/on/cameraView，不比动画 progress）",
+    JSON.stringify(afterSemantic) === JSON.stringify(beforeSemantic),
+    `cameraView ${JSON.stringify(before.cameraView)} → ${JSON.stringify(after.cameraView)}｜` +
+      `parts 语义态${JSON.stringify(beforeSemantic.parts) === JSON.stringify(afterSemantic.parts) ? "一致" : `不一致：${JSON.stringify(beforeSemantic.parts)} vs ${JSON.stringify(afterSemantic.parts)}`}`,
   );
+
+  // ── 7.5 本轮是否被中途重载 ──────────────────────────────────────────────
+  // 重载会清空 store 状态（T8 同时在改代码时 Vite 会整页刷新），本轮结果不可信。
+  checkNoReload(reporter, session);
 
   // ── 8. 页面运行期异常 ────────────────────────────────────────────────────
   // 经负责人裁定的已知偏差（见 scripts/lib/cdp.mjs 的 KNOWN_DEVIATIONS）单独标注，不并入 PASS；

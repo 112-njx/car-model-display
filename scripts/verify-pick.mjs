@@ -31,6 +31,9 @@ import {
   delay,
   waitForHooks,
   waitForIntegrationSignals,
+  classifyRuntimeNoise,
+  checkNoReload,
+  waitForCameraSettled,
 } from "./lib/cdp.mjs";
 
 /** 拖拽距离：取冻结阈值的 10 倍，确保远超 tapMaxMovePx=6 */
@@ -46,7 +49,7 @@ await run("verify-pick", async ({ session, reporter, options }) => {
   const initial = await waitForHooks(session);
 
   // ── 0. 集成门禁：hitTargets 由 T5 注册 ──────────────────────────────────
-  const signals = await waitForIntegrationSignals(session);
+  const signals = await waitForIntegrationSignals(session, { require: ["pick"] });
   reporter.info(`集成信号：${JSON.stringify(signals)}`);
   if (!signals.pick) {
     reporter.skip(
@@ -97,7 +100,24 @@ await run("verify-pick", async ({ session, reporter, options }) => {
     return current.hitTargets?.find((target) => target.id === id) ?? null;
   };
 
-  await resetToBaseline(session);
+  // ── 1.1 复位到基线（内含「先停自转 → 再复位相机 → 等停稳」，顺序不可换）────
+  // hitTargets[].screen 是当前相机下的快照；自转或预设阻尼期间相机持续移动，
+  // 快照在一次 CDP 往返内就失效 —— R1 轮实测因此出现多处假命中失败（详见 resetToBaseline 注释）。
+  const baseline = await resetToBaseline(session);
+  reporter.check(
+    "点击前停住待机自转（真实指针事件应即时停转，否则坐标必然过期）",
+    baseline.freeze.stopped,
+    `autoRotating ${baseline.freeze.autoRotatingBefore} → ${baseline.freeze.autoRotatingAfter}`,
+  );
+
+  // `setCameraView()` 是平滑阻尼到位，不是瞬移：不等它停稳就读坐标，薄玻璃必然点不中
+  // （R1 轮实测 4 处未命中，等停稳后同一批坐标 10/10 命中）。详见 waitForCameraSettled 注释。
+  const settle = await waitForCameraSettled(session);
+  reporter.check(
+    "点击前相机已停稳（预设阻尼到位，屏幕坐标才有效）",
+    settle.settled,
+    `settled=${settle.settled} 末次位移=${settle.lastDelta} position=${JSON.stringify(settle.position)}`,
+  );
 
   // ── 2. 每个部件：点击 → 开合翻转 → 再点 → 翻回 ──────────────────────────
   for (const id of PART_IDS) {
@@ -120,6 +140,17 @@ await run("verify-pick", async ({ session, reporter, options }) => {
 
     // 再点一次翻回；部件打开后几何已移动，必须重读坐标
     const again = await locate(id);
+    if (openedPart.open !== true) {
+      // 前置未满足：首次点击就没打开。此时「再点翻回」若只断言 open===false 会**空洞通过**
+      // （部件从未打开也满足），掩盖首次失败。故明确 SKIP 并指向上面那条 FAIL，不重复计数。
+      reporter.skip(
+        `${name} 再次点击：open 由 true 翻回 false`,
+        "前置未满足：首次点击未打开该部件（见上一条 FAIL），无法验证「翻回」，不重复计数",
+      );
+      await session.evaluate((partId) => window.__carDisplayStore.getState().setPart(partId, false), id);
+      await delay(SETTLE_MS);
+      continue;
+    }
     if (!again) {
       reporter.skip(
         `${name} 再次点击关闭`,
@@ -269,11 +300,22 @@ await run("verify-pick", async ({ session, reporter, options }) => {
     );
   }
 
+  // ── 7.5 本轮是否被中途重载 ──────────────────────────────────────────────
+  // 重载会清空 store 状态与相机状态（T8 同时在改代码时 Vite 会整页刷新），本轮结果不可信。
+  checkNoReload(reporter, session);
+
   // ── 8. 页面运行期异常 ───────────────────────────────────────────────────
+  // 经负责人裁定的已知偏差（见 scripts/lib/cdp.mjs 的 KNOWN_DEVIATIONS）单独标注，不并入 PASS；
+  // 其余任何异常仍然 FAIL —— 本断言**只**对登记在册的窄特征放行，不遮蔽回归。
+  const { known: knownExceptions, unknown: unknownExceptions } = classifyRuntimeNoise(
+    reporter,
+    session.events.exceptions,
+  );
   reporter.check(
-    "运行期无未捕获异常 / console.error",
-    session.events.exceptions.length === 0 && session.events.consoleErrors.length === 0,
-    `exceptions=${JSON.stringify(session.events.exceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}`,
+    "运行期无非已知偏差的未捕获异常 / console.error",
+    unknownExceptions.length === 0 && session.events.consoleErrors.length === 0,
+    `非已知偏差异常=${JSON.stringify(unknownExceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}` +
+      (knownExceptions.length ? `（另有 ${knownExceptions.length} 条已裁定偏差，见 KNOWN 明细）` : ""),
   );
 
   return { signals, targetCount: targets.length };

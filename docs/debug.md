@@ -295,6 +295,50 @@
   2. A/B/C 三组人工验收尚未执行；B 组需真机与时间窗，B11 真机语音另需 T10b 的 https URL。
   3. T3 经负责人确认**仍在运行、尚未交付**，§12.4 第 3 步第一条合并待其交付。
 
+### 记录 T9-05 · 2026-09-22 · R1 轮：集成分支滚动验收，发现 1 个真缺陷（P1）+ 4 个脚本自身缺陷（已修）
+
+- **轮次目标**：Wave 2 滚动验收 R1 —— 在 T8 集成分支（`wave2/integration`）上跑四个脚本，`--strict` 口径。
+- **被测版本**：`wave2/integration` @ `9a020c7`（起跑时），实例 `http://127.0.0.1:5191/`（已 curl 确证 `carConfig.js` 返回 JS、且集成分支专有文件可服务、被删的 `StudioEnvironment.jsx` 返回兜底页）。
+- **结果**：
+  | 脚本 | 结果 | 说明 |
+  | --- | --- | --- |
+  | `verify-parts` | ✅ **全绿** PASS 78 / FAIL 0 / SKIP 0 / KNOWN 1 | 10 部件开合收敛、动画进度真实、分组、closeAll、未知 id 拒绝全过 |
+  | `verify-pick` | ⚠️ 有残留失败（详见发现 1） | 命中判定本身已证实**10/10 正确**（隔离诊断），失败来自相机状态不可复现 |
+  | `verify-voice` | ⚠️ 部分失败（疑似重载污染，详见发现 3） | 接上 T8 的 `__carDisplayVoiceStart()` 后用例数 4 → **56**，PASS 47 |
+  | `verify-camera` | ⏸ 未取得可信结论 | 被重载污染，待冻结版本重跑 |
+
+- **发现 1（P1，真产品缺陷，已端到端确证）：「拖走相机后点『复位』无反应」**
+  - **现象**：真实拖拽把相机转走后，**真实点击「复位」按钮，相机纹丝不动**。
+  - **实测证据**（真实指针事件，非直接调 store）：
+    | 步骤 | 相机位置 |
+    | --- | --- |
+    | 拖拽前 | `[10.026, 3.1, 1.864]` |
+    | 真实拖拽后 | `[-3.476, 7.047, 7.617]` |
+    | **真实点击「复位」后** | `[-3.477, 7.047, 7.617]` ← **未变** |
+    | 对照：**单独**调 `setCameraView("hero")` | `[6.8, 3.1, 7.6]` ← 生效 |
+  - **根因链**：§13.2 的 `setCameraView` 是纯赋值 → `cameraView` 已是 `hero` 时订阅不触发；T7 在 `CameraRig` 加了「**纯空写**」兜底，但该兜底要求本次状态跃迁中**没有任何字段变化**；而 `ControlPanel.handleCameraView` 把 `bumpInteraction()` + `pushToast()` 与 `setCameraView()` **同批调用**，后两者改变了 `lastInteractionAt`/`toast` ⇒ 兜底必然提前返回。
+  - **责任**：`docs/contracts/CHANGELOG.md` **0011**（T7 提出，建议新增 `applyCameraView(viewId)` + 令牌）**至今未被任何一条受理**；0001–0018 里无一条承接。按 §13.4，Wave 2 起 T2 的 owner 由 **T8** 承担 ⇒ **归属 T8**。
+  - **影响**：人工清单 **A11**（视角按钮「每个都平滑到位」）不达标；且这是**高频路径**（拖拽后复位），不是边角用例。**不阻塞 S3 的 P0/P1 口径**需由负责人裁定 —— 我按 P1 上报。
+  - **对验收的影响**：我的 `resetToBaseline` 也因此无法可靠回到 hero 预设，导致点击套件基于过期/错位坐标运行（这是 `verify-pick` 残留失败的主因）。
+- **发现 2（我自己的脚本缺陷，4 处，已全部修复）** —— 都是「契约基座上看不出来、一集成才暴露」的类型：
+  1. **`session.waitFor` 不转发参数**：`waitFor(expression, opts)` 内部调 `evaluate(expression)` 时**丢弃了 `...args`**。`verify-parts` 传的是 `(partId) => {...}`，于是 `partId` 恒为 `undefined` → 轮询表达式每轮立刻抛错、**收敛等待形同虚设**。契约基座上 `progress` 是即时缺省值 `open?1:0`，所以看不出来；一合入 T5 就表现为 **11 处「progress 未收敛」假 FAIL**。**修法**：`waitFor` 增加 `...args` 并透传给 `evaluate`。
+  2. **`waitForIntegrationSignals` 的 `any` 陷阱**：原实现在 `signals.any` 为真时立即返回，而 `cameraRig/perf/voice` 在模块加载时即为真、`pick/partGeometry` 要等 22 MB GLB 加载完 ⇒ **读得太早**，把「模型还没加载完」误判成「T5 未集成」，得到**假 SKIP**（实测集成分支上 `hitTargets=12` 却被判未集成）。**修法**：`require: [信号名]` 改为**必填**，禁止「等任意信号」。
+  3. **`resetToBaseline` 不等场景停稳**：`closeAll()`/`setCameraView()` 都有约 4s 平滑动画，原实现只等 120ms ⇒ 读到的 `hitTargets[].screen` 是**运动中的快照**。**修法**：新增 `waitForSceneSettled()`（同时等相机位置与全部部件 `progress` 稳定），`resetToBaseline` 内置调用。
+  4. **一条空洞通过的断言**：`再次点击：open 由 true 翻回 false` 只断言 `open===false`，**部件从未打开时也满足** ⇒ 首次点击失败会被它掩盖。**修法**：前置未满足时明确 SKIP 并指向上面那条 FAIL，不重复计数。
+- **发现 3（环境/协作，阻塞可信验收）：被测代码在跑动中变化**
+  - **现象**：同一脚本连续三次运行，失败集合**每次不同**；其中一次 4.6s 就崩在 `Cannot read properties of undefined (reading 'getState')`；`verify-voice` 跑到一半崩在 `__carDisplaySpeechRecognitionMock.deliveries` undefined（注入的 mock 消失）。
+  - **根因**：**T8 正在集成分支上实时改代码**（跑动时本地 HEAD 已从 `9a020c7` 前进到 `8a4f6f4`，且 `app/src/components/scene/CameraRig.jsx` 处于**未提交的修改中**）。Vite HMR 推**整页刷新**，清空注入的 mock 与全部 store 状态 ⇒ 此后所有断言失去意义。
+  - **修法（已落地）**：新增 `checkNoReload(reporter, session)` —— 监听 `Page.frameNavigated`（`waitForHooks` 就绪后清零，故只计中途重载），四个脚本末尾各断言一次；命中即明确提示「很可能有人在同时改被测代码，本轮结果不可信，请在代码冻结后重跑」，**不把重载污染当作功能失败**。
+  - **仍缺**：**需要一个代码冻结窗口**才能给出可信的 R1 结论（见人工配置区）。
+- **发现 4（附）**：无头 Edge 下 `three/webgpu` 的 `TypeError: Invalid value used as weak map key` 在集成分支上同样出现（12 条/4s），已按负责人裁定走 `KNOWN_DEVIATIONS`，四个脚本均以 `[KNOWN]` 单独计数。
+- **自测结果**：`verify-parts` 在集成分支上 `--strict` 退出码 **0**（PASS 78 / FAIL 0 / SKIP 0 / KNOWN 1）—— 这是 R1 轮唯一可确证全绿的脚本。其余三个脚本的**机制**已验证可用（`verify-voice` 用例数 4 → 56），最终结论待冻结窗口重跑。
+- **commit**：见本轮提交（`waitFor` 透参、`require` 必填、`waitForSceneSettled`、`resetToBaseline` 顺序、`checkNoReload`、`__carDisplayVoiceStart` 接线、空洞断言修复）
+- **遗留项**：
+  1. **等代码冻结窗口**重跑 R1，取得四个脚本的可信结论（当前只有 `verify-parts` 可信）。
+  2. **P1 缺陷回流 T8**：受理 CHANGELOG 0011（`applyCameraView` + 令牌），修「拖走后点复位无反应」。
+  3. `verify-pick` 的残留失败需在 P1 修复后复验：若修复后仍失败，才是 T5 命中判定的问题。
+  4. `verify-voice` 的部件类指令失败需在无重载的环境下复验（T8 称其自测 12/12 通过，与我的口径差异待查）。
+
 ---
 
 ## 需要项目人工配置的地方
@@ -313,3 +357,5 @@
 | 8 | **T8 集成实例请按分配表用 5191** | 滚动验收要求 T9 能 `--base-url` 连到「T8 集成分支的最新代码」且**能确证实例身份**。请 T8 在集成分支的 `app/` 下用 `npm run dev -- --port 5191 --strictPort`，不要用 5173/5174/5181（前者属 T1 手机联调，后两者是他人实例）。 | 待处理（需 T8 遵守） |
 | 9 | **手机真机验收时间** | 需负责人安排手机 Chrome + 同一 Wi-Fi（开发机 WLAN `10.14.6.9`），按 `docs/qa-checklist.md` §3.2 的 B1–B13 逐项勾选。**AI 无法代做**，且我不会替你勾选。其中 B11 真机语音有硬性前提（Web Speech API 需安全上下文），须等 T10b 的 https URL，届时按「阻塞（待 https）」记录。 | 待处理（需约定时间窗） |
 | 10 | WebGPU 控制台噪声的断言裁定 | `verify-parts` 的「运行期无未捕获异常」断言因基线既有问题失败（P2，已归因结案：画面稳定、功能零影响，详见 T9-03）。负责人 2026-09-22 裁定**选 ②**：按「已知偏差」记录、不计入全绿判据。已落地为 `scripts/lib/cdp.mjs` 的 `KNOWN_DEVIATIONS` 登记表（窄匹配 + `[KNOWN]` 单独计数 + 未登记异常仍 FAIL），详见记录 T9-04。 | **已解决（按已知偏差放行）** |
+| 11 | **需要一个「代码冻结窗口」才能给出可信的 R1 结论** | T8 正在集成分支上实时改代码（跑动时 `CameraRig.jsx` 处于未提交修改中），Vite HMR 会**整页刷新**、清空注入的 mock 与 store 状态，使断言失去意义 —— 实测同一脚本三次运行失败集合各不相同、两次中途崩溃。我已加 `checkNoReload` 检测并在报告里暴露，但**无法自行消除**。请约定一个窗口（例如 15 分钟）：T8 暂停提交与保存，我跑完四脚本并给出 R1 结论。 | **待处理（阻塞 R1 可信结论）** |
+| 12 | **P1 缺陷回流 T8：拖走相机后点「复位」无反应** | 已端到端确证（真实拖拽 + 真实点击按钮，相机纹丝不动；单独调 `setCameraView` 则生效）。根因是 CHANGELOG **0011** 登记的契约缺口（`setCameraView` 同值下发不触发订阅，T7 的「纯空写」兜底被 `ControlPanel` 的同批 `bumpInteraction/pushToast` 破坏）**至今未被受理**。按 §13.4，Wave 2 起 T2 的 owner 由 T8 承担 ⇒ 请 T8 受理 0011 并落地 `applyCameraView(viewId)`（带令牌），`ControlPanel` 改调它。详见记录 T9-05 发现 1。 | **待处理（需 T8 受理）** |
