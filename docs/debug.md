@@ -199,6 +199,34 @@
 - **commit**：`db8ab86`（已 push 到 `origin/wave1/t8p`）
 - **遗留项**：① 浏览器端三项验证待放行后补做；② `docs/debug.md` 被全部 9 个 Wave 1 Agent 追加，**T8 合并时此处必冲突**，建议以"两侧都保留、按 Agent 分段"处理。
 
+### 记录 10 · 2026-09-22 · 回退临时挂载 + 契约对接自测（免浏览器）
+
+- **轮次目标**：把分支收拾成可交付状态（`App.jsx` 必须零改动），并在**不放行浏览器**的前提下，尽可能把 DoD 里"`perf` 字段能被 `__carDisplaySceneAudit()` 读到"这条验到。
+- **改动文件**：新增 `app/src/perf/contractCheck.mjs`；**回退** `app/src/App.jsx`（撤销记录 09 的临时挂载）。
+- **关键决策 / 问题**：
+
+  1. **人工决定：跳过浏览器内验证，继续推进**。被 worktree 隔离守卫拦下的三项（降级页真实渲染、`window.__carDisplaySceneAudit().perf` 真实读数、CPU 降频下 rAF 驱动的自动降档）**转为遗留项，不计入已完成**。已把守卫的三条实测被拒形式与三种放行方式登记到人工配置区 #5，后续任何人拿到放行都能直接接手。
+  2. **补 `contractCheck.mjs`：用 Vite 的 `ssrLoadModule` 把真契约加载进来验**（T2 在记录 07 用过同一套路，同为免浏览器手段）。它把 `config/carConfig.js`、`devtools/auditHooks.js`、`perf/PerfProvider.jsx`、`perf/fpsSampler.js` 经**与浏览器同一套转换管线**加载后断言，因此验到的不再是纯逻辑，而是**我的代码与冻结契约的真实对接**：
+     - §13.1 `QUALITY` 的形状与三档数值逐字段比对；
+     - `resolveFeatures()` 对真契约的三档映射、脏档位退最低档、`quality` 为 `undefined` 不抛错；
+     - **`registerSceneAuditSource("perf", fn)` 注册后 `sceneAudit().perf` 能读到**，键恰为 `{fps,dpr,tier}`、`tier` 取自采样器、注销后回到 `null`；
+     - `"perf"` 落进**场景**审计而非相机审计（`auditHooks` 有 `CAMERA_KEYS` 路由，注册错 key 会静默跑到 `__carDisplayCameraAudit()` 里，这条断言防的就是这个）；
+     - 未触碰契约其余部分（`PARTS` 仍 10 项、`LIGHTS` 仍 2 项）。
+  3. **这条验证的边界要说清**：`sceneAudit()` 正是 `installAuditHooks` 赋给 `window.__carDisplaySceneAudit` 的**实现本体**，所以"数据通路"已验；但"`installAuditHooks` 在浏览器里确实把这个函数挂到 `window` 上"属 T2 的代码，本脚本未覆盖，仍归浏览器验证。
+  4. **`vite:dep-scan` 噪音**：首次运行时输出里混进一大段报错，根因是 Vite 起 dev server 时会扫描 `index.html` 入口做依赖预打包，撞上 `StudioCanvas.jsx:18` 的 `await import("three/webgpu")` 而报错。**与本次验证无关**（29 项断言当时已全绿），但会淹没结论。修法：`optimizeDeps: { noDiscovery: true, include: [] }`——本脚本只做 `ssrLoadModule`，不需要预打包。
+  5. **`App.jsx` 已 `git checkout` 回退**，`git status` 干净，硬约束"不改 App.jsx"满足。
+
+- **自测结果**：
+  - `node app/src/perf/contractCheck.mjs` → **29 项断言全绿 ✅**，退出码 0，输出无噪音。
+  - `node app/src/perf/selfTest.mjs` → **66 项断言全绿 ✅**。
+  - `npm run build`（`App.jsx` 已回退的干净树上）：✅ **628 modules，24.98s，退出码 0**。模块数与记录 09 里"未挂载时"的 628 一致，反证 `App.jsx` 确实回到了原状、`perf/**` 未被任何入口引用（符合预期——正式接线归 T8）。
+  - 说明：本次构建首次执行在 300s 内未完成被转后台，成因是**机器内存吃紧**（同一命令此前两次分别 14.92s / 6.00s 完成），非工程问题；转后台后正常完成。
+- **commit**：`⟨本轮提交⟩`
+- **遗留项**：
+  1. **三项浏览器内验证未做**（人工已决定跳过），见人工配置区 #5。
+  2. **真机性能实测（桌面 ≥55fps / 手机 ≥30fps）归 Wave 2 的 T8**（§11.1 T8 任务⑤），本轮不涉及。
+  3. `docs/debug.md` 被全部 9 个 Wave 1 Agent 追加，**T8 合并时此处必冲突**，建议"两侧都保留、按 Agent 分段"。
+
 ---
 
 ## 需要项目人工配置的地方
@@ -211,6 +239,6 @@
 | 2 | 手机真机同局域网联调 | 开发机 WLAN 地址 `10.14.6.9`（SSID `henu 3`，网络类别 Public）。Public 防火墙配置文件**已关闭**且已存在 2 条 `Node.js JavaScript Runtime` 入站放行规则，**无需额外放行端口**。手机需连同一 Wi-Fi 后访问 `http://10.14.6.9:5173/`。若校园网开启 AP 客户端隔离，手机将无法访问，此时请改用手机热点。**AI 无法代做真机验收**，请人工确认"仅 Tesla 一台车 / 无车型切换入口 / 四门四窗前后备箱灯光可用 / 触摸拖拽旋转可用"。 | 待处理（需真机） |
 | 3 | 加载页字节 MB 读数 | 见记录 04，等待人工决策是否修 `VehicleModel.jsx:81`。 | 待处理 |
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
-| 5 | 无头浏览器 CDP 自测放行 | **阻塞 T2（渲染层实测）与 T8p（降级页 / perf 审计读数 / 自动降档）两个 Agent。** 现象：任何**可执行文件位于 worktree 之外**的命令都被本会话的 worktree 隔离守卫拦下，理由是无法证明该命令不是 git 操作。已实测被拦的形式：绝对路径直接调 `msedge.exe`、`cmd //c mklink`（`//c` 被判成越界路径）。**注意：AI 不得用 node 子进程或 worktree 内软链去伪装路径绕过该守卫**（属规避守卫意图），因此必须由人工放行。三种可行方式，推荐程度由高到低：<br>**①（推荐，零配置）** 你在**另一个普通终端窗口**里跑一次下面的命令并保持窗口开着。一个 Edge 实例可被 T2 与 T8p 共用（CDP 可各自开标签页）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\cd-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`。**不要用会话里的 `!` 前缀跑**——无头 Edge 不会自行退出，会把输入框一直占住。<br>**②** 在 `~/.claude/settings.local.json` 的 `permissions.allow` 里加 `"Bash(\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\"*)"`（T8p 尝试代改被分类器拦下，见 #7）。<br>**③（原生但脆弱，不推荐）** `safe-chains --suggest "<命令>"` 会给出 `[[command]]` 块与 `[[trusted]]` 的 sha256 pin 两段配置，分别写入项目根 `.safe-chains.toml` 与 `~/.config/safe-chains.toml`。**修正 T2 原先的判断**：`~/.config/safe-chains.toml` 这个路径本身是对的（safe-chains 自己这么命名），只是该文件尚未存在、需按需创建；缺点是 sha256 与项目 toml 内容强绑定，任何编辑都会让 pin 失效。 | 待处理（阻塞 T2 与 T8p） |
+| 5 | 无头浏览器 CDP 自测放行 | **阻塞 T2（渲染层实测）与 T8p（降级页 / perf 审计读数 / 自动降档）两个 Agent。** 现象：任何**可执行文件位于 worktree 之外**的命令都被本会话的 worktree 隔离守卫拦下，理由是无法证明该命令不是 git 操作。已实测被拦的形式：绝对路径直接调 `msedge.exe`、`cmd //c mklink`（`//c` 被判成越界路径）。**注意：AI 不得用 node 子进程或 worktree 内软链去伪装路径绕过该守卫**（属规避守卫意图），因此必须由人工放行。三种可行方式，推荐程度由高到低：<br>**①（推荐，零配置）** 你在**另一个普通终端窗口**里跑一次下面的命令并保持窗口开着。一个 Edge 实例可被 T2 与 T8p 共用（CDP 可各自开标签页）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\cd-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`。**不要用会话里的 `!` 前缀跑**——无头 Edge 不会自行退出，会把输入框一直占住。<br>**②** 在 `~/.claude/settings.local.json` 的 `permissions.allow` 里加 `"Bash(\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\"*)"`（T8p 尝试代改被分类器拦下，见 #7）。<br>**③（原生但脆弱，不推荐）** `safe-chains --suggest "<命令>"` 会给出 `[[command]]` 块与 `[[trusted]]` 的 sha256 pin 两段配置，分别写入项目根 `.safe-chains.toml` 与 `~/.config/safe-chains.toml`。**修正 T2 原先的判断**：`~/.config/safe-chains.toml` 这个路径本身是对的（safe-chains 自己这么命名），只是该文件尚未存在、需按需创建；缺点是 sha256 与项目 toml 内容强绑定，任何编辑都会让 pin 失效。 | 待处理（**T8p 已按人工决定跳过**，仍阻塞 T2 渲染层实测） |
 | 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程（PID 24428）监听，T2 的 dev server 自动落到 **5174**。做 dev 自测时务必以自己实例输出的端口为准，否则会打到别人的工程得到假绿（详见记录 06 的端口陷阱）。若后续多 Agent 并行开发，建议各自显式指定端口。 | 待处理（已规避，登记备查） |
 | 7 | 改 `~/.claude/settings.local.json` 被分类器拦下 | T8p 经人工同意后尝试在该文件的 `permissions.allow` 里追加两条 Edge 放行规则，连续两次被 Claude Code 的 auto mode 分类器以 "Stage 2 classifier error" 拒绝（提示为瞬时错误、可重试，但两次均未通过）。**AI 无法自行完成**。若采纳 #5 的方式②，请人工把这两条粘进 `permissions.allow`：`"Bash(\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\"*)"` 与 `"Bash(\"C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"*)"`。 | 待处理（可被 #5 方式①绕过，故不阻塞） |
