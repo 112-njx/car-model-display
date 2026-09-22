@@ -69,6 +69,11 @@ function createGridTexture(segments) {
 export function TechGrid({ segments = GRID_SEGMENTS }) {
   const texture = useCanvasTexture(() => createGridTexture(segments), [segments]);
 
+  // 贴图就绪前不渲染：材质若先以「无 map」编译一次，之后再赋值 map 不会触发
+  // 着色器重编译，`USE_MAP` 始终未定义 —— 贴图的颜色与 alpha 会被整片忽略，
+  // 网格退化成 color(白) × opacity 的实心灰片。详见 useCanvasTexture.js 注释。
+  if (!texture) return null;
+
   return (
     <mesh name="cd-env-grid" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]} renderOrder={1}>
       <circleGeometry args={[GRID_RADIUS, GRID_SEGMENTS]} />

@@ -61,6 +61,9 @@ export function SweepLight({ opacity = 0.15, speed = RADIANS_PER_SECOND }) {
     if (group.current) group.current.rotation.y += delta * speed;
   });
 
+  // 贴图就绪前不渲染，理由同 TechGrid（避免材质先以无 map 状态编译）。
+  if (!texture) return null;
+
   return (
     <group ref={group}>
       <mesh

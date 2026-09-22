@@ -159,7 +159,7 @@ export function CockpitEnvironment({
       />
 
       {/* ── 地面层 ── */}
-      <ReflectiveFloor enableReflection={features.reflector} receiveShadow={features.shadow} />
+      <ReflectiveFloor enableReflection={features.reflector} />
       <TechGrid segments={features.gridSegments} />
       <ContactShadow />
       <RingLightBand radiusScale={ringScale} />

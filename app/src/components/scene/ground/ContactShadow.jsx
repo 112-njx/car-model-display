@@ -45,6 +45,9 @@ function createBlobTexture() {
 export function ContactShadow({ size = [7.6, 3.5], opacity = 0.72 }) {
   const texture = useCanvasTexture(createBlobTexture, []);
 
+  // 贴图就绪前不渲染，理由同 TechGrid（避免材质先以无 map 状态编译）。
+  if (!texture) return null;
+
   return (
     <mesh name="cd-env-contact-shadow" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} renderOrder={2}>
       <planeGeometry args={size} />

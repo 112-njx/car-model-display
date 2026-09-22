@@ -110,29 +110,36 @@ function VehicleReflection({ source }) {
  * @param {object}  props
  * @param {boolean} props.enableReflection 对应 §13.1 `QUALITY.features[tier].reflector`。
  *                                          false 时只留地面本体，不克隆车模、不增 draw call。
- * @param {boolean} props.receiveShadow    对应 §13.1 `QUALITY.features[tier].shadow`。
+ * 注：地面为不受光材质，故不接收阴影贴图，无需 `shadow` 降级开关
+ * （`features.shadow` 仍由 CockpitEnvironment 用于灯光的 castShadow）。
  */
-export function ReflectiveFloor({ enableReflection = true, receiveShadow = true }) {
+export function ReflectiveFloor({ enableReflection = true }) {
   const alphaTexture = useCanvasTexture(createFloorAlphaTexture, []);
   const vehicleRoot = useVehicleRoot(enableReflection);
+
+  // 贴图就绪前不渲染地面，理由同 TechGrid：材质若先以「无 alphaMap」编译一次，
+  // 之后赋值 alphaMap 不会触发重编译，`USE_ALPHAMAP` 始终未定义 ——
+  // 整块地面会退化成全不透明，把下方镜像倒影完全盖死。
+  if (!alphaTexture) return null;
 
   return (
     <>
       {enableReflection && vehicleRoot ? <VehicleReflection source={vehicleRoot} /> : null}
-      <mesh name="cd-env-floor" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow={receiveShadow} renderOrder={0}>
+      <mesh name="cd-env-floor" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} renderOrder={0}>
         <circleGeometry args={[FLOOR_RADIUS, FLOOR_SEGMENTS]} />
-        {/* 哑光深色面：metalness 0 + 高 roughness 是刻意的。
-            相机以掠射角看地面时，菲涅耳会把平行光的高光放大到接近全反射，
-            四盏平行光叠加会在整个地面糊出一片亮青色，压掉倒影、网格与光带。
-            地面在这里只负责「压暗 + 承载倒影」，镜面感由镜像倒影提供，不靠高光。 */}
-        <meshStandardMaterial
+        {/* 地面用 MeshBasicMaterial（不受光）—— 这是刻意的，不是省事。
+            受光材质在本场景下数学上必然发灰：四盏平行光总辐照度约 7.4，
+            即使反照率压到近黑（#05080c ≈ 0.02 线性），漫反射仍有 0.02×7.4 ≈ 0.15，
+            经 ACES + sRGB 编码后约 40% 灰 —— 整块地面糊成一片亮青灰，
+            倒影、网格、光带全部被压掉。车身高光又必须靠这些强光，
+            不能为了压暗地面而削光。
+            所以地面改为不受光：恒定深色 + alphaMap 渐隐，镜面感完全交给镜像倒影。
+            代价是地面不再接收阴影贴图；「车贴地」由 ContactShadow 与模型自带烘焙阴影承担。 */}
+        <meshBasicMaterial
           color={ENV_COLORS.floorBase}
-          metalness={0}
-          roughness={0.62}
           transparent
           alphaMap={alphaTexture}
           depthWrite={false}
-          envMapIntensity={1.1}
         />
       </mesh>
     </>
