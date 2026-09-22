@@ -491,6 +491,42 @@
 
 ---
 
+
+---
+
+## Wave 1 · T3 中控大屏风格视觉场景（MainAgent 代收）
+
+> 说明：T3 Agent 的 A 段代码已完成但会话中断、**未提交**（分支 wave1/t3 停在 T1 提交、origin 无该分支）。由 MainAgent 按 T3 任务书代收：还原自测挂载、补记录与挂载说明、完成 B 段接线、提交推送。
+
+### 记录 06 · 2026-09-22 · T3 收尾（A 段提交 + B 段接线）
+
+- **轮次目标**：把 T3 已完成但未提交的 A 段（CockpitEnvironment + ground）提交入库，并补齐 B 段接线（HeadlightRig 固定 tesla 锚点 + 接新 store、QUALITY 契约化），解除 S2 阻塞。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `src/components/scene/CockpitEnvironment.jsx` | A 段新建（6.9KB，props 驱动）；B 段默认 quality 改取 `QUALITY_TIERS[0]` |
+  | `src/components/scene/ground/*` | A 段新建 8 文件：ReflectiveFloor / TechGrid / ContactShadow / RingLightBand / SweepLight / envTheme / useCanvasTexture / env.css |
+  | `src/components/scene/ground/envTheme.js` | B 段：`QUALITY_FALLBACK` 占位常量删除，改 `import { QUALITY } from carConfig`（§13.1 契约）；`resolveQualityFeatures` 未知档位回退最高档 |
+  | `src/components/scene/HeadlightRig.jsx` | B 段：移除 studioConfig/useStudioStore 依赖，固定 `TESLA_RIG` 常量（值取自 `HEADLIGHT_RIGS.tesla`，零行为变化）；`enabled` 改读 `useCarStore((s) => s.lights.headlight)` |
+  | `docs/t3-scene-mount-guide.md` | 新建挂载说明（T8 使用） |
+  | `docs/debug.md` | 本条记录 |
+- **关键决策 / 问题**：
+  1. **T3 Agent 未提交（现象→根因→修法）**：分支 HEAD 停在 T1 提交、origin 无 wave1/t3、App.jsx 有 12 行自测挂载改动未还原。根因：T3 Agent 会话中断、未按工作纪律逐步提交。修法：MainAgent 还原 App.jsx 自测改动（任务书要求自测挂载不交付），提交 A 段代码并补齐 B 段。
+  2. **B 段依赖确认**：`useCarStore.lights` 为 `Record<lightId, boolean>`、action `setLight/toggleLight`（§13.2）；T5 的 VehicleModel 保留注册 `__formdriveHeadlightAnchors`（vehicle: "tesla"）与 `__formdriveActiveTransform`——HeadlightRig 的锚点跟随可继续复用，无需自建。
+  3. **rebase 干净**：`wave1/t3` rebase 到 `origin/contract-v1` 成功，无冲突（T3 分支此前无提交）。
+  4. **编译验证方式**：CockpitEnvironment 未被入口引用时不会进 bundle，故临时把它挂进 StudioCanvas 执行 `npm run build` 验证编译，通过后**已还原 StudioCanvas**（该挂载改动不交付，正式挂载归 T8，见挂载说明 §2）。
+- **自测结果**：
+  - `npm run build`（B 段代码 + 临时挂载）：✅ 通过，8.95s；chunk >500kB 警告为 FormDrive 原有（three 体积），非本次引入。
+  - 还原 StudioCanvas 后 `git status`：仅 HeadlightRig（M）+ CockpitEnvironment/ground（??）待提交；`__t3harness.jsx` 保持未跟踪（临时文件，不提交）。
+- **commit**：（见本条之后提交）
+- **遗留项**：
+  1. `ENV_COLORS` 色值为 T3 近似占位，T8 集成期按 T4 `tokens.css` 收口（集中导出已就绪）。
+  2. CockpitEnvironment 的 `qualityFeatures` prop 由 T8 接 T8p `PerfProvider` 时传入（挂载说明 §3）。
+  3. `StudioEnvironment.jsx` 保留待 T8 挂载时替换删除。
+  4. HeadlightRig 光束跟随依赖 T5 VehicleModel 注册的钩子，T8 合并 T5 后需联调确认。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
