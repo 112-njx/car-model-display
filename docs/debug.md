@@ -489,6 +489,149 @@
   2. 跑脚本前必须**先确证 dev server 是自己的实例**：用 `curl` 核对一个 contract-v1 专有路径（如 `/src/config/carConfig.js`）返回的是 JS 而非 `text/html`，否则一定得到假阴性/假阳性。此纪律已写入 `docs/qa-checklist.md` §1.1。
   3. 人工配置区 #7（无头浏览器放行）已由人工执行过一次；若该实例被关闭，需重新启动。
 
+### 记录 T9-03 · 2026-09-22 · Wave 2 首跑：四个脚本在真实契约页面上全部跑通；WebGPU 异常归因结案
+
+- **轮次目标**：Wave 2 验收执行段第 0 步——**不等 T8**，在自己的 worktree（`contract-v1` = 契约基座）上起验收实例，把 Wave 1 从未跑过的四个脚本真跑一遍，暴露只有真跑才出现的缺陷。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `docs/qa-checklist.md` | 新增 §1.0 端口分配表（经负责人裁定）+ T9 验收实例的起法与两个坑；§1.1 dev 端口改为按分配表取 5191 |
+  | `docs/debug.md` | 本记录 + 人工配置区 #6/#7 状态更新 |
+  | `app/.vite/t9-probe.mjs` | **临时诊断探针**（位于 `.gitignore` 第 15 行的 `.vite/` 下，`git check-ignore` 已验证被忽略，**不随分支交付**；保留以便复跑） |
+- **端口与实例身份（本机实测）**：
+  - 监听现状：`5174`、`5181` 在监听，且**都已返回真实 `carConfig.js`**。`5181` 上有**两个进程**：`0.0.0.0:5181`(PID 10732) 与 `127.0.0.1:5181`(PID 29668)。
+  - **根因（补全 T9-02 未查清的部分）**：本仓库 `package.json` 的 `npm run dev` = `vite --host 0.0.0.0`，而裸 `npx vite` 默认绑 `127.0.0.1`。Windows 允许 `0.0.0.0:P` 与 `127.0.0.1:P` **同时监听**，连 `127.0.0.1:P` 时**更具体的绑定胜出** —— 于是「端口对了但实例不对」。这正是 T9-02「打错服务端」的成因。
+  - **纪律升级**：验收实例一律显式 `--host 127.0.0.1` + 独占端口（已按裁定分配：T9=5190，T8=5191），并在每次跑脚本前 `curl` 核对 `carConfig.js` 返回 `text/javascript`。
+  - **新增判据修正**：`index.html` 的字节数**不能**用于判断实例身份 —— 本工程自己的 `index.html` 在 contract-v1 上恰好也是 **2888 B**，与兜底页同长。唯一可靠判据是 `carConfig.js` 的 content-type。
+- **关键决策 / 问题**：
+  1. **起服务时踩了两个坑，均由「先确证实例身份」这条纪律当场抓住**：① Vite 7 的 root 是**位置参数**，`--root app` 报 `CACError: Unknown option '--root'`；② 漏掉位置参数时 vite 把 **worktree 根目录**当 root，`GET /` 返回 **404**（`index.html` 在 `app/` 里）。已写入 `qa-checklist.md` §1.0。
+  2. **四个脚本全部真跑通**（`--base-url=http://127.0.0.1:5190/`），无一处崩溃、无时序/序列化缺陷 —— **T9-01 遗留项 1 与 T9-02 遗留项 1 就此闭合**：
+     | 脚本 | 合计 | PASS | FAIL | SKIP | 退出码 | 用时 |
+     | --- | --- | --- | --- | --- | --- | --- |
+     | `verify-parts` | 78 | 76 | **1** | 1 | 1 | 4.5s |
+     | `verify-pick` | 1 | 0 | 0 | 1 | 0 | 45.6s |
+     | `verify-voice` | 1 | 0 | 0 | 1 | 0 | 45.7s |
+     | `verify-camera`（`--fast`） | 20 | 19 | 0 | 1 | 0 | 46.6s |
+     SKIP 全部是设计预期（`verify-pick`/`verify-voice` 因 T5/T6 未集成而整体 SKIP 并打印可操作原因，不假绿；`verify-parts`/`verify-camera` 的集成层 SKIP）。
+  3. **唯一的 FAIL 已归因结案（P2，非 Wave 1 引入，不阻塞 S3）**：`verify-parts` 的「运行期无未捕获异常」断言失败。
+     - **现象**：无头 Edge 下 `three/webgpu` 的 `Textures.updateTexture` → `Bindings._init` **间歇**抛 `TypeError: Invalid value used as weak map key`（观测 0–12 条 / 4s，抖动）。
+     - **归因过程（三次对照实验，探针见 `app/.vite/t9-probe.mjs`）**：
+       1. **强制 WebGL 对照**：CDP 预注入把 `navigator.gpu` 置 `undefined` → 后端 `webgl`，**0 异常**；不注入 → 后端 `webgpu`，12 条异常。→ 异常只在 WebGPU 路径。
+       2. **裸 WebGPU 对照**：绕开 three，直接用裸 WebGPU API 渲染**离屏纹理**（显式 `RENDER_ATTACHMENT|COPY_SRC`）并读回 → `firstPixelBGRA=[229,153,51,255]`，与 `clearValue (0.2,0.6,0.9)` 精确吻合，`uncapturedErrors=[]`。→ **这台无头 Edge 的 WebGPU 本身完全正常**，问题在 three 的 WebGPU 后端 + 本场景。
+       3. **画面影响对照**：用 `Page.captureScreenshot`（合成器输出 = 用户真正看到的）**裁出 3D 画布区域**分析 → WebGPU 模式 252 色 / stdDev 43.3 = **有画面**；WebGL 模式 237 / 39.7 = 有画面。再连拍 6 帧（间隔 400ms），**两种模式亮度均值极差均为 0.00** → **画面完全稳定，无闪烁、无缺件**。
+     - **结论**：异常是**纯控制台噪声，对画面与功能零影响**。归因于 FormDrive 基线代码 —— `StudioCanvas.jsx` 的 `createRenderer` 只对 `await renderer.init()` 加了 try/catch，**渲染期**异常捕不到；非 Wave 1 任何分支引入（T1 记录 04/05、`77dc507` 已登记为「WebGPU 既有异常」）。
+     - **严重级 P2**，责任模块：基线 / T8（§11.1 给 T8 的「集成期小修」权）。影响面：违反人工清单 **A20「控制台干净」**。
+  4. **一次差点误报 P0 的教训（方法论，值得留档）**：第 2 步对照实验里，我曾用 `ctx.drawImage(webgpuCanvas)` 统计画布像素，得到 **全黑**（distinctColors=1, stdDev=0），一度准备按「WebGPU 黑屏」上报 P0。**实际上 WebGPU 画布无法这样拷出内容**，是测量假象。是第 3 步的合成器截图把它证伪的。**教训：判定「画面是否渲染」必须用 `Page.captureScreenshot`（合成器输出），不能用 `drawImage` 拷 WebGPU 画布；且必须裁出 3D 画布区域，否则 DOM UI 的像素会冒充「有画面」。**
+- **自测结果**：上述四脚本实跑数据即本轮自测证据；探针的三种模式对照可复跑（`PROBE_MODE=webgpu|webgl node app/.vite/t9-probe.mjs`）。
+- **commit**：见本轮提交（`docs/qa-checklist.md` §1.0 端口表 + 本记录）
+- **遗留项**：
+  1. **待人工裁定**：`verify-parts` 的「运行期无未捕获异常」断言是否对「已归因的基线 P2 噪声」放行。**我不自行放宽断言凑绿**，已把证据与建议一并上报，等负责人拍板（选项见 `docs/qa-report.md` 的已知偏差一节）。
+  2. **`verify-parts` 的 1 项 SKIP**（T5 未集成）待 T8 合并 `interaction/**` 后重跑。
+  3. `verify-voice` 全部 SKIP 待 T6 合并后重跑；`verify-pick` 待 T5；`verify-camera` 集成层待 T7。
+  4. 人工配置区 #7 已**实际生效**（9222 上无头 Edge 存活，CDP 可连），无需负责人再操作；若该实例被关闭需重启。
+
+### 记录 T9-04 · 2026-09-22 · 已知偏差机制落地 + 产出 qa-report.md（R0 轮）
+
+- **轮次目标**：执行负责人对人工配置区 #10 的裁定（**选 ②**：WebGPU 控制台噪声按「已知偏差」记录、不计入全绿判据），并把 R0 轮结果落成 S3 交付物 `docs/qa-report.md`。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `scripts/lib/cdp.mjs` | 新增 `KNOWN_DEVIATIONS` 登记表 + `matchKnownDeviation()` + `classifyRuntimeNoise()`；reporter 新增 `known()` 与 `[KNOWN]` 计数/明细 |
+  | `scripts/verify-parts.mjs` | 异常断言改为「已知偏差分离、其余仍 FAIL」 |
+  | `docs/qa-report.md` | **新增**（S3 交付物）：R0 轮记录 + 已知偏差 + issue 清单 + 回归记录 + S3 放行结论 |
+  | `docs/debug.md` | 本记录 + 人工配置区 #10 结案 |
+- **关键决策 / 问题**：
+  1. **裁定 ② 的实现方式（本记录最重要的一点）**：**没有**用「忽略异常」这类写法，那等于偷偷放宽断言。落地为**四条纪律**，写在 `KNOWN_DEVIATIONS` 顶部：
+     - **窄匹配**：`match` 必须**同时**命中 `Invalid value used as weak map key` 与 `three_webgpu` 两个特征串，不写通配；
+     - **显式标注**：命中的条目以 `[KNOWN]` **单独打印并单独计数，不并入 PASS**，任何时候都看得见；
+     - **不遮蔽回归**：只有窄匹配命中的文本被放行，**同一断言下任何其它异常仍然 FAIL**；
+     - **可撤销**：条目里写明 `revokeWhen`（T8 修好渲染期回退、或升级 three 后应删除该条目、恢复 FAIL 口径）。
+  2. **归并去重**：同类偏差按 id 归并为**一行 + 次数**（首次实测 12 条异常刷了 12 行，太吵），避免噪声淹没真正的 FAIL。
+  3. **`--strict` 语义确认**：`verify-parts` 在契约基座上带 `--strict` 仍退出 1，但原因是 **T5 未集成的 SKIP 计入失败**，**不是** WebGPU 那条 —— 这正是设计意图（Wave 2 验收要求 SKIP=0，集成收口后才可能）。R0 不加 `--strict`，以区分「脚本能不能跑」与「功能齐不齐」。
+  4. **R0 的定位**：跑在 `contract-v1`（契约基座）而**非** T8 集成分支，因此**不是 S3 验收轮**；它的价值是闭合 Wave 1「四脚本从未真跑」这一未知风险。`qa-report.md` 里已明确标注这一点，避免被误读为验收通过。
+- **自测结果**：
+  - `node --check`：`cdp.mjs` / `verify-parts.mjs` 语法通过。
+  - **登记表安全性自测（5+1 项全过）**：已登记的 three/webgpu 噪声 → 命中；换一个未登记异常 → **不命中**；碰巧含 `weak map key` 但非 `three_webgpu` → 不命中；碰巧含 `three_webgpu` 但非该错误 → 不命中；空串 → 不命中；归并：同类 2 条只登记 1 行、未命中项原样留在 `unknown`。**证得「未登记异常仍会被判 FAIL，回归不被遮蔽」。**
+  - `verify-parts` 实跑 3 次（5190，契约基座）：`PASS 77 / FAIL 0 / SKIP 1`，KNOWN 在 0 与 1 之间抖动（对应页面异常 0 或 12 条），**退出码 0**（非 strict）；有异常的那两次均正确归并为 1 行 `[KNOWN]`。
+- **commit**：见本轮提交（`KNOWN_DEVIATIONS` 机制 + `qa-report.md` + 本记录）
+- **遗留项**：
+  1. **S3 未达成**：集成层 SKIP 待 T5/T6/T7/T8p 合并后清零，且**必须在 T8 集成分支上重跑**（当前跑的是契约基座）。
+  2. A/B/C 三组人工验收尚未执行；B 组需真机与时间窗，B11 真机语音另需 T10b 的 https URL。
+  3. T3 经负责人确认**仍在运行、尚未交付**，§12.4 第 3 步第一条合并待其交付。
+
+### 记录 T9-05 · 2026-09-22 · R1 轮：集成分支滚动验收，发现 1 个真缺陷（P1）+ 4 个脚本自身缺陷（已修）
+
+- **轮次目标**：Wave 2 滚动验收 R1 —— 在 T8 集成分支（`wave2/integration`）上跑四个脚本，`--strict` 口径。
+- **被测版本**：`wave2/integration` @ `9a020c7`（起跑时），实例 `http://127.0.0.1:5191/`（已 curl 确证 `carConfig.js` 返回 JS、且集成分支专有文件可服务、被删的 `StudioEnvironment.jsx` 返回兜底页）。
+- **结果**：
+  | 脚本 | 结果 | 说明 |
+  | --- | --- | --- |
+  | `verify-parts` | ✅ **全绿** PASS 78 / FAIL 0 / SKIP 0 / KNOWN 1 | 10 部件开合收敛、动画进度真实、分组、closeAll、未知 id 拒绝全过 |
+  | `verify-pick` | ⚠️ 有残留失败（详见发现 1） | 命中判定本身已证实**10/10 正确**（隔离诊断），失败来自相机状态不可复现 |
+  | `verify-voice` | ⚠️ 部分失败（疑似重载污染，详见发现 3） | 接上 T8 的 `__carDisplayVoiceStart()` 后用例数 4 → **56**，PASS 47 |
+  | `verify-camera` | ⏸ 未取得可信结论 | 被重载污染，待冻结版本重跑 |
+
+- **发现 1（P1，真产品缺陷）：「拖走相机后点『复位』无反应」**
+  > **⚠️ 本条的更正（见 T9-06）**：我在此处原写「已端到端确证」，**该测试是无效的** —— 我取「复位」按钮
+  > `getBoundingClientRect()` 中心得 `y=1005`，而视口高度仅 900，点击在**视口外**派发、根本没落在按钮上。
+  > **缺陷本身是真的**（T7 在 CHANGELOG 0011 里以自己的证据记录了同一现象），但**我提供的"证明"不成立**。
+  > 下方表格中的"真实点击「复位」后"一行据此**不可信**；已在 T9-06 用有效测试重做回归（结果：已修复）。
+
+  - **现象**：真实拖拽把相机转走后，**真实点击「复位」按钮，相机纹丝不动**。
+  - **实测证据**（真实指针事件，非直接调 store）：
+    | 步骤 | 相机位置 |
+    | --- | --- |
+    | 拖拽前 | `[10.026, 3.1, 1.864]` |
+    | 真实拖拽后 | `[-3.476, 7.047, 7.617]` |
+    | **真实点击「复位」后** | `[-3.477, 7.047, 7.617]` ← **未变** |
+    | 对照：**单独**调 `setCameraView("hero")` | `[6.8, 3.1, 7.6]` ← 生效 |
+  - **根因链**：§13.2 的 `setCameraView` 是纯赋值 → `cameraView` 已是 `hero` 时订阅不触发；T7 在 `CameraRig` 加了「**纯空写**」兜底，但该兜底要求本次状态跃迁中**没有任何字段变化**；而 `ControlPanel.handleCameraView` 把 `bumpInteraction()` + `pushToast()` 与 `setCameraView()` **同批调用**，后两者改变了 `lastInteractionAt`/`toast` ⇒ 兜底必然提前返回。
+  - **责任**：`docs/contracts/CHANGELOG.md` **0011**（T7 提出，建议新增 `applyCameraView(viewId)` + 令牌）**至今未被任何一条受理**；0001–0018 里无一条承接。按 §13.4，Wave 2 起 T2 的 owner 由 **T8** 承担 ⇒ **归属 T8**。
+  - **影响**：人工清单 **A11**（视角按钮「每个都平滑到位」）不达标；且这是**高频路径**（拖拽后复位），不是边角用例。**不阻塞 S3 的 P0/P1 口径**需由负责人裁定 —— 我按 P1 上报。
+  - **对验收的影响**：我的 `resetToBaseline` 也因此无法可靠回到 hero 预设，导致点击套件基于过期/错位坐标运行（这是 `verify-pick` 残留失败的主因）。
+- **发现 2（我自己的脚本缺陷，4 处，已全部修复）** —— 都是「契约基座上看不出来、一集成才暴露」的类型：
+  1. **`session.waitFor` 不转发参数**：`waitFor(expression, opts)` 内部调 `evaluate(expression)` 时**丢弃了 `...args`**。`verify-parts` 传的是 `(partId) => {...}`，于是 `partId` 恒为 `undefined` → 轮询表达式每轮立刻抛错、**收敛等待形同虚设**。契约基座上 `progress` 是即时缺省值 `open?1:0`，所以看不出来；一合入 T5 就表现为 **11 处「progress 未收敛」假 FAIL**。**修法**：`waitFor` 增加 `...args` 并透传给 `evaluate`。
+  2. **`waitForIntegrationSignals` 的 `any` 陷阱**：原实现在 `signals.any` 为真时立即返回，而 `cameraRig/perf/voice` 在模块加载时即为真、`pick/partGeometry` 要等 22 MB GLB 加载完 ⇒ **读得太早**，把「模型还没加载完」误判成「T5 未集成」，得到**假 SKIP**（实测集成分支上 `hitTargets=12` 却被判未集成）。**修法**：`require: [信号名]` 改为**必填**，禁止「等任意信号」。
+  3. **`resetToBaseline` 不等场景停稳**：`closeAll()`/`setCameraView()` 都有约 4s 平滑动画，原实现只等 120ms ⇒ 读到的 `hitTargets[].screen` 是**运动中的快照**。**修法**：新增 `waitForSceneSettled()`（同时等相机位置与全部部件 `progress` 稳定），`resetToBaseline` 内置调用。
+  4. **一条空洞通过的断言**：`再次点击：open 由 true 翻回 false` 只断言 `open===false`，**部件从未打开时也满足** ⇒ 首次点击失败会被它掩盖。**修法**：前置未满足时明确 SKIP 并指向上面那条 FAIL，不重复计数。
+- **发现 3（环境/协作，阻塞可信验收）：被测代码在跑动中变化**
+  - **现象**：同一脚本连续三次运行，失败集合**每次不同**；其中一次 4.6s 就崩在 `Cannot read properties of undefined (reading 'getState')`；`verify-voice` 跑到一半崩在 `__carDisplaySpeechRecognitionMock.deliveries` undefined（注入的 mock 消失）。
+  - **根因**：**T8 正在集成分支上实时改代码**（跑动时本地 HEAD 已从 `9a020c7` 前进到 `8a4f6f4`，且 `app/src/components/scene/CameraRig.jsx` 处于**未提交的修改中**）。Vite HMR 推**整页刷新**，清空注入的 mock 与全部 store 状态 ⇒ 此后所有断言失去意义。
+  - **修法（已落地）**：新增 `checkNoReload(reporter, session)` —— 监听 `Page.frameNavigated`（`waitForHooks` 就绪后清零，故只计中途重载），四个脚本末尾各断言一次；命中即明确提示「很可能有人在同时改被测代码，本轮结果不可信，请在代码冻结后重跑」，**不把重载污染当作功能失败**。
+  - **仍缺**：**需要一个代码冻结窗口**才能给出可信的 R1 结论（见人工配置区）。
+- **发现 4（附）**：无头 Edge 下 `three/webgpu` 的 `TypeError: Invalid value used as weak map key` 在集成分支上同样出现（12 条/4s），已按负责人裁定走 `KNOWN_DEVIATIONS`，四个脚本均以 `[KNOWN]` 单独计数。
+- **自测结果**：`verify-parts` 在集成分支上 `--strict` 退出码 **0**（PASS 78 / FAIL 0 / SKIP 0 / KNOWN 1）—— 这是 R1 轮唯一可确证全绿的脚本。其余三个脚本的**机制**已验证可用（`verify-voice` 用例数 4 → 56），最终结论待冻结窗口重跑。
+- **commit**：见本轮提交（`waitFor` 透参、`require` 必填、`waitForSceneSettled`、`resetToBaseline` 顺序、`checkNoReload`、`__carDisplayVoiceStart` 接线、空洞断言修复）
+- **遗留项**：
+  1. **等代码冻结窗口**重跑 R1，取得四个脚本的可信结论（当前只有 `verify-parts` 可信）。
+  2. **P1 缺陷回流 T8**：受理 CHANGELOG 0011（`applyCameraView` + 令牌），修「拖走后点复位无反应」。
+  3. `verify-pick` 的残留失败需在 P1 修复后复验：若修复后仍失败，才是 T5 命中判定的问题。
+  4. `verify-voice` 的部件类指令失败需在无重载的环境下复验（T8 称其自测 12/12 通过，与我的口径差异待查）。
+
+### 记录 T9-06 · 2026-09-22 · R1 正式轮（代码冻结）：3/4 脚本全绿；关闭 2 个 issue、新开 1 个 P1；更正一次自己的误报
+
+- **轮次目标**：在负责人提供的**代码冻结窗口**内，对 T8 集成分支跑完四脚本，取得可信的 R1 结论；并回归确认我上报的 issue。
+- **被测版本**：`wave2/integration` @ **`7aead33`**（`git status` 干净，确认已冻结），实例 `http://127.0.0.1:5191/`。
+- **结果（均 `--strict`，SKIP=0 已达成）**：
+  | 脚本 | 退出码 | PASS | FAIL | SKIP | KNOWN |
+  | --- | --- | --- | --- | --- | --- |
+  | verify-parts | **0** | 79 | 0 | 0 | 0 |
+  | verify-pick | **0** | 38 | 0 | 0 | 0（连跑 3 次均绿） |
+  | verify-voice | **0** | 100 | 0 | 0 | 0 |
+  | verify-camera | 1 | 34 | **1** | 0 | 0 |
+- **关闭的 issue**：
+  1. **#1（P2 WebGPU 噪声）已修复** —— T8 `8d20840` 去掉 WebGPU 优先分支、强制 WebGL（未捕获异常 514→0）。R1 四个脚本 KNOWN 均为 0。**已按我写下的 `revokeWhen` 删除 `KNOWN_DEVIATIONS` 条目，恢复最严口径**（异常若重现必须重新 FAIL），删后重跑 `verify-parts` 仍 79/0/0。
+  2. **#2（P1 复位无反应）已修复** —— T8 受理 CHANGELOG 0011 → 落地 0019（`applyCameraView(viewId)` 带自增令牌；`ControlPanel` 与语音通道均改调它；删除了 T7 那段有误命中面的"空写"兜底）。**回归通过**。
+- **新开的 issue**：
+  3. **#3（P1）待机自转的「交互即停」不满足语音与程序化路径** —— 实测：静置约 10s 待自转启动 → 经 mock 说「打开车窗」→ 4 个车窗**正确打开**但 `autoRotating` **true → true**（自转继续）。另实测每 2s 调一次 `store.bumpInteraction()` 持续 16s，自转**仍在约 10s 后启动**（`[false×4, true×4]`）。**根因**：`IdleAutoRotate` 用自己的内部 `lastInteractionAtRef`、只由真实 DOM 指针事件驱动的 `notifyInteraction()` 更新，**不消费 §13.2 冻结的 `store.lastInteractionAt`** ⇒ 凡不经指针事件的交互（语音、程序化）都无法停转/重置计时。真实指针路径（canvas 点击/拖拽、面板按钮真实点击）**均正常** ✅。影响人工项 **A14**。建议修法已写入 `qa-report.md` §4.1。
+- **我的一次误报与更正（重要，必须留档）**：T9-05 发现 1 我称「已**端到端确证**」复位无反应。**该测试无效**：我取按钮 `getBoundingClientRect()` 中心得 `y=1005`，而视口高度仅 900 —— `Input.dispatchMouseEvent` 在**视口外**派发，点击根本没落在按钮上，我却把「相机没动」当成按钮无反应。**缺陷本身是真的**（T7 在 CHANGELOG 0011 里以自己的证据记录了同一现象，T8 也已受理修复），但**我提供的"证明"不成立**。已固化为 `scripts/lib/cdp.mjs` 的 `clickElement()`（`scrollIntoView` + `elementFromPoint` 双重回验，任一不满足即拒绝派发点击），并用它重做回归 —— 滚动入视口、`elementFromPoint` 命中 `BUTTON|复位` 后，真实拖拽 + 真实点击「复位」→ 相机回到 `[6.8, 3.1, 7.6]`（位移 11.463）。
+- **本轮修掉的脚本自身缺陷（5 处 + 2 项小修）**：详见 `qa-report.md` §5 的表格（`waitFor` 不转发参数、`waitForIntegrationSignals` 的 `any` 陷阱、`resetToBaseline` 不等停稳、点击后只等 900ms、`verify-voice` 的 `sameMap` 键数相等导致「FAIL 但 diff 说一致」；另修重复 `start()` 抛 `InvalidStateError`、`verify-pick` 的「再次点击翻回」空洞通过）。新增 `checkNoReload()` 检测中途重载。
+- **commit**：见本轮提交
+- **遗留项**：
+  1. **issue #3（P1）待 T8 修复**；修后回归 `verify-camera`（预期 35/0/0），四脚本即全绿。
+  2. A/B/C 三组人工验收待执行；B 组需真机与时间窗，B11 另需 T10b 的 https URL。
+  3. `docs/qa-report.md` 已更新为 R1 正式版。
+
 ---
 
 
@@ -1191,3 +1334,5 @@
 | 33 | **`file://` 双击打开 dist 不可用（口径修正）** | Chrome 对 `file://` 源以 CORS 拒绝加载 ES module 与 CSS，属浏览器安全策略、与 `base` 无关；roadmap §11.1 T10a 写的「dist 可离线打开」对 module 形态的 Vite 产物不可能成立（除非引入单文件内联插件=新增依赖，违反依赖冻结）。**已把交付口径改为"任意静态服务器托管（含子路径）"并写进 readme/release-notes 的已知限制**；子路径托管已实测通过。请确认该口径修正。 | 待确认（口径修正） |
 | 34 | **真机性能实测与调参** | 人工裁定「先不管帧率，先把功能做完」，故 dpr 上限、反射地面/阴影/扫光降档阈值的真机调参留到真机阶段一次性做。需要：一台正常桌面机（复核 ≥55fps）与一台手机（复核 ≥30fps + 触摸手感）。 | 待处理（需真机） |
 | 35 | **真机复核触摸点按与竖屏构图** | 两项移动端修复（触摸点按判据、竖屏机位补偿）已在 headless 触摸模拟下逐条实测通过，但**真机手指按压时长分布与合成触摸不完全一致**，建议真机确认手感。 | 待处理（需真机） |
+| 36 | **P1：待机自转「交互即停」不满足语音/程序化路径（阻塞 S3，T9 R1 轮上报 4cdf423）** | 实测语音指令「打开车窗」正确执行但自转继续（`autoRotating` true→true）；每 2s 调 `store.bumpInteraction()` 持续 16s 仍会在约 10s 后进入自转 ⇒ `IdleAutoRotate` 不消费 §13.2 冻结的 `store.lastInteractionAt`。真实指针路径正常，影响人工项 A14。根因与建议修法见 `docs/qa-report.md` §4.1。 | 待处理（需 T8 修复后 T9 回归） |
+| 37 | 验收代码冻结窗口纪律 | T8 曾边改代码边被验收，Vite HMR 整页刷新清空注入的 mock 与 store，使断言失效（同脚本三次结果集合不同、两次中途崩溃）。已固化 `checkNoReload()`，命中即判本轮结果不可信；R1 正式轮在冻结窗口（`7aead33`、工作区干净）跑完。后续每轮验收前被测实例必须冻结。 | 已解决（纪律已固化进脚本） |

@@ -26,6 +26,8 @@ import {
   delay,
   waitForHooks,
   waitForIntegrationSignals,
+  classifyRuntimeNoise,
+  checkNoReload,
 } from "./lib/cdp.mjs";
 
 const SAMPLING_INTERVAL_MS = 100;
@@ -48,7 +50,7 @@ async function sampleCamera(session, durationMs, intervalMs = SAMPLING_INTERVAL_
 
 await run("verify-camera", async ({ session, reporter, options }) => {
   const initial = await waitForHooks(session);
-  const signals = await waitForIntegrationSignals(session);
+  const signals = await waitForIntegrationSignals(session, { require: ["cameraRig"] });
   reporter.info(`集成信号：${JSON.stringify(signals)}`);
 
   // ── 1. CameraAudit 结构（§13.3③）────────────────────────────────────────
@@ -257,11 +259,22 @@ await run("verify-camera", async ({ session, reporter, options }) => {
     }
   }
 
+  // ── 8.5 本轮是否被中途重载 ──────────────────────────────────────────────
+  // 重载会清空相机与 store 状态（T8 同时在改代码时 Vite 会整页刷新），本轮结果不可信。
+  checkNoReload(reporter, session);
+
   // ── 9. 页面运行期异常 ───────────────────────────────────────────────────
+  // 经负责人裁定的已知偏差（见 scripts/lib/cdp.mjs 的 KNOWN_DEVIATIONS）单独标注，不并入 PASS；
+  // 其余任何异常仍然 FAIL —— 本断言**只**对登记在册的窄特征放行，不遮蔽回归。
+  const { known: knownExceptions, unknown: unknownExceptions } = classifyRuntimeNoise(
+    reporter,
+    session.events.exceptions,
+  );
   reporter.check(
-    "运行期无未捕获异常 / console.error",
-    session.events.exceptions.length === 0 && session.events.consoleErrors.length === 0,
-    `exceptions=${JSON.stringify(session.events.exceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}`,
+    "运行期无非已知偏差的未捕获异常 / console.error",
+    unknownExceptions.length === 0 && session.events.consoleErrors.length === 0,
+    `非已知偏差异常=${JSON.stringify(unknownExceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}` +
+      (knownExceptions.length ? `（另有 ${knownExceptions.length} 条已裁定偏差，见 KNOWN 明细）` : ""),
   );
 
   return { signals, presetPositions, layer: "contract+integration" };

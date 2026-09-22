@@ -1,0 +1,587 @@
+{
+  "title": "verify-parts",
+  "generatedAt": "2026-09-22T09:35:13.956Z",
+  "baseUrl": "http://127.0.0.1:5191/",
+  "debugPort": 9222,
+  "browser": "Edg/153.0.4234.48",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "mobile": false
+  },
+  "exitCode": 0,
+  "counts": {
+    "pass": 79,
+    "fail": 0,
+    "skip": 0,
+    "known": 0
+  },
+  "results": [
+    {
+      "status": "pass",
+      "name": "审计钩子 __carDisplayStore 存在",
+      "detail": "hasStore=true"
+    },
+    {
+      "status": "pass",
+      "name": "审计钩子 __carDisplaySceneAudit() 存在",
+      "detail": null
+    },
+    {
+      "status": "pass",
+      "name": "审计钩子 __carDisplayCameraAudit() 存在",
+      "detail": null
+    },
+    {
+      "status": "pass",
+      "name": "parts 为 10 项全量数组",
+      "detail": "实得 10 项"
+    },
+    {
+      "status": "pass",
+      "name": "parts 顺序与 §13.1 声明一致",
+      "detail": "实得 [\"window_lf\",\"window_rf\",\"window_lr\",\"window_rr\",\"door_lf\",\"door_rf\",\"door_lr\",\"door_rr\",\"frunk\",\"trunk\"]"
+    },
+    {
+      "status": "pass",
+      "name": "lights 为 2 项全量数组",
+      "detail": "实得 2 项"
+    },
+    {
+      "status": "pass",
+      "name": "lights 顺序与 §13.1 声明一致",
+      "detail": "实得 [\"headlight\",\"taillight\"]"
+    },
+    {
+      "status": "pass",
+      "name": "每个 part 均含 {id,open,progress,bbox} 且类型正确",
+      "detail": "首项 {\"id\":\"window_lf\",\"open\":false,\"progress\":0,\"bbox\":null}"
+    },
+    {
+      "status": "pass",
+      "name": "每个 light 均含 {id,on} 且类型正确",
+      "detail": "首项 {\"id\":\"headlight\",\"on\":false}"
+    },
+    {
+      "status": "pass",
+      "name": "cameraView 为字符串",
+      "detail": "实得 \"hero\""
+    },
+    {
+      "status": "pass",
+      "name": "autoRotate 为布尔",
+      "detail": "实得 false"
+    },
+    {
+      "status": "pass",
+      "name": "hitTargets 为数组（未注册时为 []）",
+      "detail": "实得 数组(0)"
+    },
+    {
+      "status": "pass",
+      "name": "perf 为 null 或 {fps,dpr,tier}",
+      "detail": "实得 null"
+    },
+    {
+      "status": "pass",
+      "name": "closeAll() 后全部部件与灯光为关",
+      "detail": "parts 开=0 lights 亮=0"
+    },
+    {
+      "status": "pass",
+      "name": "关态 progress 终值为 0",
+      "detail": "实得 [0,0,0,0,0,0,0,0,0,0]"
+    },
+    {
+      "status": "pass",
+      "name": "左前车窗（window_lf） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "左前车窗（window_lf） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9925276071252647"
+    },
+    {
+      "status": "pass",
+      "name": "左前车窗（window_lf） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "左前车窗（window_lf） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0.027,0.209,0.327,0.461,0.544,0.625,0.689,0.734,0.785,0.825,0.854,0.877,0.899,0.916,0.931,0.942,0.956,0.965,0.972,0.979]"
+    },
+    {
+      "status": "pass",
+      "name": "左前车窗（window_lf） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.007714984890049217"
+    },
+    {
+      "status": "pass",
+      "name": "右前车窗（window_rf） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "右前车窗（window_rf） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9920676821713699"
+    },
+    {
+      "status": "pass",
+      "name": "右前车窗（window_rf） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "右前车窗（window_rf） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0,0.139,0.324,0.388,0.623,0.683,0.741,0.786,0.822,0.853,0.878,0.899,0.919,0.935,0.949,0.959,0.968,0.975,0.98,0.985]"
+    },
+    {
+      "status": "pass",
+      "name": "右前车窗（window_rf） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.0053088643360124504"
+    },
+    {
+      "status": "pass",
+      "name": "左后车窗（window_lr） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "左后车窗（window_lr） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9935417700481859"
+    },
+    {
+      "status": "pass",
+      "name": "左后车窗（window_lr） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "左后车窗（window_lr） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0.015,0.312,0.535,0.687,0.777,0.852,0.902,0.931,0.953,0.966,0.976,0.984,0.989,0.991]"
+    },
+    {
+      "status": "pass",
+      "name": "左后车窗（window_lr） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.007641171163820733"
+    },
+    {
+      "status": "pass",
+      "name": "右后车窗（window_rr） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "右后车窗（window_rr） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9925337693086052"
+    },
+    {
+      "status": "pass",
+      "name": "右后车窗（window_rr） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "右后车窗（window_rr） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0,0.203,0.349,0.496,0.584,0.665,0.716,0.777,0.82,0.857,0.881,0.901,0.919,0.93,0.945,0.954,0.963,0.97,0.976,0.981]"
+    },
+    {
+      "status": "pass",
+      "name": "右后车窗（window_rr） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.005845086587314341"
+    },
+    {
+      "status": "pass",
+      "name": "左前门（door_lf） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "左前门（door_lf） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9979056247916669"
+    },
+    {
+      "status": "pass",
+      "name": "左前门（door_lf） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "左前门（door_lf） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0.054,0.825,0.929,0.975,0.991]"
+    },
+    {
+      "status": "pass",
+      "name": "左前门（door_lf） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.003770353591066702"
+    },
+    {
+      "status": "pass",
+      "name": "右前门（door_rf） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "右前门（door_rf） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9970152819732505"
+    },
+    {
+      "status": "pass",
+      "name": "右前门（door_rf） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "右前门（door_rf） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0,0.523,0.759,0.881,0.948,0.978,0.991]"
+    },
+    {
+      "status": "pass",
+      "name": "右前门（door_rf） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.004907937116142853"
+    },
+    {
+      "status": "pass",
+      "name": "左后门（door_lr） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "左后门（door_lr） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9957767487118813"
+    },
+    {
+      "status": "pass",
+      "name": "左后门（door_lr） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "左后门（door_lr） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0.29,0.585,0.787,0.899,0.946,0.97,0.986,0.993]"
+    },
+    {
+      "status": "pass",
+      "name": "左后门（door_lr） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.0023844685332868746"
+    },
+    {
+      "status": "pass",
+      "name": "右后门（door_rr） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "右后门（door_rr） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9940126118670094"
+    },
+    {
+      "status": "pass",
+      "name": "右后门（door_rr） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "右后门（door_rr） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0,0.678,0.815,0.906,0.948,0.971,0.985,0.992]"
+    },
+    {
+      "status": "pass",
+      "name": "右后门（door_rr） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.0032712288803893753"
+    },
+    {
+      "status": "pass",
+      "name": "前备箱（frunk） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "前备箱（frunk） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9992307926586474"
+    },
+    {
+      "status": "pass",
+      "name": "前备箱（frunk） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "前备箱（frunk） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0.057,0.682,0.901,0.966,0.989,0.996]"
+    },
+    {
+      "status": "pass",
+      "name": "前备箱（frunk） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.002126545193573118"
+    },
+    {
+      "status": "pass",
+      "name": "后备箱（trunk） 打开：audit.open=true",
+      "detail": "实得 open=true"
+    },
+    {
+      "status": "pass",
+      "name": "后备箱（trunk） 打开：progress 终值 ≈1",
+      "detail": "实得 0.9997914538086144"
+    },
+    {
+      "status": "pass",
+      "name": "后备箱（trunk） 打开：store.parts 与 audit.open 一致",
+      "detail": "store=true audit=true"
+    },
+    {
+      "status": "pass",
+      "name": "后备箱（trunk） 过渡期 progress 恒在 [0,1]",
+      "detail": "采样 [0,0.769,0.953,0.99,0.998]"
+    },
+    {
+      "status": "pass",
+      "name": "后备箱（trunk） 关闭：audit.open=false 且 progress 终值 ≈0",
+      "detail": "实得 open=false progress=0.0028499280572472367"
+    },
+    {
+      "status": "pass",
+      "name": "集成层：过渡期采到真实动画进度（0<progress<1）",
+      "detail": "左前车窗 采样 [0.027,0.209,0.327,0.461,0.544,0.625,0.689,0.734,0.785,0.825,0.854,0.877,0.899,0.916,0.931,0.942,0.956,0.965,0.972,0.979]"
+    },
+    {
+      "status": "pass",
+      "name": "灯光 headlight 打开：audit.lights[].on=true",
+      "detail": "实得 true"
+    },
+    {
+      "status": "pass",
+      "name": "灯光 headlight 打开：store.lights 与 audit 一致",
+      "detail": "store=true"
+    },
+    {
+      "status": "pass",
+      "name": "灯光 headlight toggleLight 关闭：audit.lights[].on=false",
+      "detail": "实得 false"
+    },
+    {
+      "status": "pass",
+      "name": "灯光 taillight 打开：audit.lights[].on=true",
+      "detail": "实得 true"
+    },
+    {
+      "status": "pass",
+      "name": "灯光 taillight 打开：store.lights 与 audit 一致",
+      "detail": "store=true"
+    },
+    {
+      "status": "pass",
+      "name": "灯光 taillight toggleLight 关闭：audit.lights[].on=false",
+      "detail": "实得 false"
+    },
+    {
+      "status": "pass",
+      "name": "openGroup('windows')：4 个车窗全开、其余部件保持关闭",
+      "detail": "开=[\"window_lf\",\"window_rf\",\"window_lr\",\"window_rr\"]"
+    },
+    {
+      "status": "pass",
+      "name": "openGroup 三个分组后：10 个部件全开",
+      "detail": "开=10/10"
+    },
+    {
+      "status": "pass",
+      "name": "closeAll()：10 个部件 + 2 个灯光全部复位",
+      "detail": "部件开=0 灯亮=0"
+    },
+    {
+      "status": "pass",
+      "name": "未知 id 不写入状态：parts 恒 10 键 / lights 恒 2 键",
+      "detail": "parts=10 lights=2"
+    },
+    {
+      "status": "pass",
+      "name": "未知 id 不改变 audit 终态（比 id/open/on/cameraView，不比动画 progress）",
+      "detail": "cameraView \"hero\" → \"hero\"｜parts 语义态一致"
+    },
+    {
+      "status": "pass",
+      "name": "本轮运行期间页面未被重载（重载会清空 mock 与 store 状态，使断言失去意义）",
+      "detail": "无重载"
+    },
+    {
+      "status": "pass",
+      "name": "运行期无非已知偏差的未捕获异常 / console.error",
+      "detail": "非已知偏差异常=[] consoleErrors=[]"
+    }
+  ],
+  "pageEvents": {
+    "exceptions": [],
+    "logErrors": [],
+    "consoleErrors": [],
+    "navigations": []
+  },
+  "transitions": [
+    {
+      "id": "window_lf",
+      "samples": [
+        0.027178823967830893,
+        0.2091365849423169,
+        0.32732635988604786,
+        0.46120493833551096,
+        0.5444387027564365,
+        0.624540623937431,
+        0.689125193670114,
+        0.7337887200209053,
+        0.7846853860747135,
+        0.8251601732617448,
+        0.8541322660725517,
+        0.8770115708323709,
+        0.8992370952954979,
+        0.9157536471213337,
+        0.9314094150982767,
+        0.9423963877124589,
+        0.9556596419604458,
+        0.9647297342433744,
+        0.971967619762772,
+        0.9788066960777738
+      ]
+    },
+    {
+      "id": "window_rf",
+      "samples": [
+        0,
+        0.13871084956669397,
+        0.32409990340363126,
+        0.387808416155427,
+        0.6233617118290892,
+        0.6831177420101284,
+        0.7406391645912477,
+        0.7857132054748833,
+        0.8220753263363059,
+        0.8532874428299552,
+        0.877760127906661,
+        0.8986033270839989,
+        0.9187971553572526,
+        0.9352155711382385,
+        0.9486797567778609,
+        0.9591506757419132,
+        0.9682171994868415,
+        0.9752877201724821,
+        0.980310307429966,
+        0.9848538665884484
+      ]
+    },
+    {
+      "id": "window_lr",
+      "samples": [
+        0.015065364471970712,
+        0.3121744263896856,
+        0.5348684452473391,
+        0.6873246977355171,
+        0.7770204018892659,
+        0.8517054825561399,
+        0.9018462350568837,
+        0.9307727010020365,
+        0.9529227307139357,
+        0.9663887685969897,
+        0.9762079788398056,
+        0.9837321579437076,
+        0.9885434080655464,
+        0.9910788462794212
+      ]
+    },
+    {
+      "id": "window_rr",
+      "samples": [
+        0,
+        0.20258497353089788,
+        0.3494844001788014,
+        0.49595009597100825,
+        0.5836170960997469,
+        0.6653298971464723,
+        0.7160011243934578,
+        0.7767258744480813,
+        0.8200974565582831,
+        0.8565193361974169,
+        0.880807446869437,
+        0.9014892894373985,
+        0.9185287433336766,
+        0.9304636053802627,
+        0.9447788915843506,
+        0.9543832360656516,
+        0.9627437290234072,
+        0.9697721018142519,
+        0.9758838852472385,
+        0.9806931437476646
+      ]
+    },
+    {
+      "id": "door_lf",
+      "samples": [
+        0.05436630561470823,
+        0.8252851390370644,
+        0.9286601356356562,
+        0.9753997826323618,
+        0.9910932868536217
+      ]
+    },
+    {
+      "id": "door_rf",
+      "samples": [
+        0,
+        0.523362959917028,
+        0.7594434303630854,
+        0.8808592844052818,
+        0.948287202813373,
+        0.9780447722163857,
+        0.9912709610457989
+      ]
+    },
+    {
+      "id": "door_lr",
+      "samples": [
+        0.29004237905287067,
+        0.5847190498681403,
+        0.7865601032836113,
+        0.8988600421419647,
+        0.9460905773822534,
+        0.9701030855630737,
+        0.9862057025433487,
+        0.9933130672971929
+      ]
+    },
+    {
+      "id": "door_rr",
+      "samples": [
+        0,
+        0.6779182873670615,
+        0.8150001010564369,
+        0.9055939387896331,
+        0.9476786097351083,
+        0.9708703871930724,
+        0.9848226333903691,
+        0.991621195196453
+      ]
+    },
+    {
+      "id": "frunk",
+      "samples": [
+        0.05682175960033342,
+        0.6824912811241061,
+        0.9010707172594905,
+        0.9657082335853145,
+        0.9894465240596978,
+        0.9964218164662889
+      ]
+    },
+    {
+      "id": "trunk",
+      "samples": [
+        0,
+        0.7690952520418375,
+        0.9530912005836102,
+        0.9896166321720667,
+        0.9978251596084073
+      ]
+    }
+  ]
+}

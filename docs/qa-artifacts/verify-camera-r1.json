@@ -1,0 +1,233 @@
+{
+  "title": "verify-camera",
+  "generatedAt": "2026-09-22T09:27:23.126Z",
+  "baseUrl": "http://127.0.0.1:5191/",
+  "debugPort": 9222,
+  "browser": "Edg/153.0.4234.48",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "mobile": false
+  },
+  "exitCode": 1,
+  "counts": {
+    "pass": 34,
+    "fail": 1,
+    "skip": 0,
+    "known": 0
+  },
+  "results": [
+    {
+      "status": "pass",
+      "name": "__carDisplayCameraAudit() 返回对象",
+      "detail": "实得 {\"view\":\"hero\",\"position\":null,\"target\":null,\"distance\":null,\"autoRotating\":false,\"orbiting\":false}"
+    },
+    {
+      "status": "pass",
+      "name": "cameraAudit.view 为字符串或 null",
+      "detail": "实得 \"hero\""
+    },
+    {
+      "status": "pass",
+      "name": "cameraAudit.position/target 为 3 元数组或 null",
+      "detail": "position=null target=null"
+    },
+    {
+      "status": "pass",
+      "name": "cameraAudit.distance 为有限数或 null",
+      "detail": "实得 null"
+    },
+    {
+      "status": "pass",
+      "name": "cameraAudit.autoRotating 为布尔",
+      "detail": "实得 false"
+    },
+    {
+      "status": "pass",
+      "name": "cameraAudit.orbiting 为布尔",
+      "detail": "实得 false"
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('hero') → cameraAudit.view 跟随",
+      "detail": "实得 view=\"hero\""
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('hero') → sceneAudit.cameraView 与 store 一致",
+      "detail": "sceneAudit=\"hero\" store=\"hero\""
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('front') → cameraAudit.view 跟随",
+      "detail": "实得 view=\"front\""
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('front') → sceneAudit.cameraView 与 store 一致",
+      "detail": "sceneAudit=\"front\" store=\"front\""
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('profile') → cameraAudit.view 跟随",
+      "detail": "实得 view=\"profile\""
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('profile') → sceneAudit.cameraView 与 store 一致",
+      "detail": "sceneAudit=\"profile\" store=\"profile\""
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('detail') → cameraAudit.view 跟随",
+      "detail": "实得 view=\"detail\""
+    },
+    {
+      "status": "pass",
+      "name": "setCameraView('detail') → sceneAudit.cameraView 与 store 一致",
+      "detail": "sceneAudit=\"detail\" store=\"detail\""
+    },
+    {
+      "status": "pass",
+      "name": "orbitOnce() → cameraCommand.type='orbit-once'",
+      "detail": "实得 {\"type\":\"orbit-once\",\"token\":1}"
+    },
+    {
+      "status": "pass",
+      "name": "orbitOnce() → cameraCommand.token 自增",
+      "detail": "token 0 → 1"
+    },
+    {
+      "status": "pass",
+      "name": "orbitOnce() 可重复触发：token 再次自增",
+      "detail": "token 1 → 2"
+    },
+    {
+      "status": "pass",
+      "name": "setAutoRotate(true) → sceneAudit.autoRotate=true",
+      "detail": "实得 true"
+    },
+    {
+      "status": "pass",
+      "name": "setAutoRotate(false) → sceneAudit.autoRotate=false",
+      "detail": "实得 false"
+    },
+    {
+      "status": "pass",
+      "name": "预设 'hero'：机位为有限 3 元数组且 distance>0",
+      "detail": "position=[6.8,3.1,7.6] distance=10.459"
+    },
+    {
+      "status": "pass",
+      "name": "预设 'front'：机位为有限 3 元数组且 distance>0",
+      "detail": "position=[0.2,1.8,8.8] distance=8.865"
+    },
+    {
+      "status": "pass",
+      "name": "预设 'profile'：机位为有限 3 元数组且 distance>0",
+      "detail": "position=[7.9,1.55,0.2] distance=7.449"
+    },
+    {
+      "status": "pass",
+      "name": "预设 'detail'：机位为有限 3 元数组且 distance>0",
+      "detail": "position=[2.4,1.75,3.2] distance=3.829"
+    },
+    {
+      "status": "pass",
+      "name": "复位/正面/侧面三个预设的机位互不相同",
+      "detail": "hero↔front=6.833 hero↔profile=7.640 front↔profile=11.546"
+    },
+    {
+      "status": "pass",
+      "name": "「转一下」：环绕期间 cameraAudit.orbiting=true",
+      "detail": "采样 44 次，orbiting=true 出现 34 次"
+    },
+    {
+      "status": "pass",
+      "name": "「转一下」：相机确实绕行（最大偏离起始机位 > 0.5）",
+      "detail": "最大偏离 20.361"
+    },
+    {
+      "status": "pass",
+      "name": "「转一下」：环绕结束后 orbiting=false",
+      "detail": "末 3 次采样 orbiting=[false,false,false]"
+    },
+    {
+      "status": "pass",
+      "name": "「转一下」：环绕一周后回正（终位接近起始机位）",
+      "detail": "终位偏离起始 0.000（最大偏离 20.361）"
+    },
+    {
+      "status": "pass",
+      "name": "待机自转：空闲约 8000ms 后 autoRotating=true",
+      "detail": "首次观测到 autoRotating=true 于 4424ms"
+    },
+    {
+      "status": "pass",
+      "name": "待机自转：相机确实在转动（机位发生变化）",
+      "detail": "机位最大变化 9.932"
+    },
+    {
+      "status": "fail",
+      "name": "交互即停：bumpInteraction() 后 autoRotating=false",
+      "detail": "实得 autoRotating=true"
+    },
+    {
+      "status": "pass",
+      "name": "指针拖拽旋转可用（机位随拖拽改变）",
+      "detail": "机位变化 7.1550"
+    },
+    {
+      "status": "pass",
+      "name": "指针拖拽即停自转：拖拽后 autoRotating=false",
+      "detail": "实得 autoRotating=false"
+    },
+    {
+      "status": "pass",
+      "name": "本轮运行期间页面未被重载（重载会清空 mock 与 store 状态，使断言失去意义）",
+      "detail": "无重载"
+    },
+    {
+      "status": "pass",
+      "name": "运行期无非已知偏差的未捕获异常 / console.error",
+      "detail": "非已知偏差异常=[] consoleErrors=[]"
+    }
+  ],
+  "pageEvents": {
+    "exceptions": [],
+    "logErrors": [],
+    "consoleErrors": [],
+    "navigations": []
+  },
+  "signals": {
+    "pick": false,
+    "partGeometry": false,
+    "cameraRig": true,
+    "perf": true,
+    "voice": true,
+    "any": true
+  },
+  "presetPositions": {
+    "hero": [
+      6.8,
+      3.1000000000000005,
+      7.599999999999999
+    ],
+    "front": [
+      0.2,
+      1.7999999999999992,
+      8.8
+    ],
+    "profile": [
+      7.9,
+      1.5499999999999992,
+      0.20000000000000026
+    ],
+    "detail": [
+      2.4000000000000004,
+      1.7500000000000004,
+      3.1999999999999997
+    ]
+  },
+  "layer": "contract+integration"
+}

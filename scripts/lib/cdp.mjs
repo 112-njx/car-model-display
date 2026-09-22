@@ -153,18 +153,37 @@ export async function resolveDebugPort(preferred = null) {
   const candidates = preferred
     ? [preferred, ...DEBUG_PORT_CANDIDATES.filter((port) => port !== preferred)]
     : DEBUG_PORT_CANDIDATES;
-  for (const port of candidates) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      if (!response.ok) continue;
-      const version = await response.json();
-      return { port, browser: version.Browser ?? "unknown" };
-    } catch {
-      // 该端口没有调试实例，试下一个
+
+  /**
+   * 探测超时。**不能设得太短**：无头浏览器在渲染重场景（本工程 22 MB GLB）时会长时间占满主线程，
+   * `/json/version` 可能数秒不响应。R1 轮实测踩过 —— 2s 超时把「浏览器正忙」误报成
+   * 「未找到可用的 CDP 调试端口」，误导排查方向。故放宽到 8s。
+   */
+  const probeTimeoutMs = Number(process.env.CAR_DISPLAY_CDP_PROBE_TIMEOUT ?? 8000);
+
+  async function scan() {
+    for (const port of candidates) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
+          signal: AbortSignal.timeout(probeTimeoutMs),
+        });
+        if (!response.ok) continue;
+        const version = await response.json();
+        return { port, browser: version.Browser ?? "unknown" };
+      } catch {
+        // 该端口没有调试实例，或瞬时繁忙，试下一个
+      }
     }
+    return null;
   }
+
+  // 整体重试一次：覆盖「浏览器短暂繁忙」这一瞬态，避免把环境问题误报成脚本缺陷
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const found = await scan();
+    if (found) return found;
+    if (attempt === 0) await delay(1500);
+  }
+
   throw new Error(
     `未找到可用的 CDP 调试端口（已尝试 ${candidates.join(" / ")}）。\n` +
       `请先启动一个带调试端口的浏览器（无需关闭现有窗口），例如：\n` +
@@ -196,7 +215,7 @@ export async function createSession(options) {
 
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   const pending = new Map();
-  const events = { exceptions: [], logErrors: [], consoleErrors: [] };
+  const events = { exceptions: [], logErrors: [], consoleErrors: [], navigations: [] };
   let commandId = 0;
 
   socket.addEventListener("message", ({ data }) => {
@@ -208,6 +227,11 @@ export async function createSession(options) {
       if (message.error) reject(new Error(`${message.error.message}（${message.error.code ?? "?"}）`));
       else resolve(message.result);
       return;
+    }
+    // 页面重载（含 Vite HMR 整页刷新）会清空注入的 mock 与全部 store 状态，
+    // 让此后所有断言失去意义 —— 必须记下来，供脚本判「本轮结果是否可信」。
+    if (message.method === "Page.frameNavigated" && !message.params?.frame?.parentId) {
+      events.navigations.push({ url: message.params?.frame?.url ?? "", at: Date.now() });
     }
     if (message.method === "Runtime.exceptionThrown") {
       const details = message.params?.exceptionDetails ?? {};
@@ -257,13 +281,18 @@ export async function createSession(options) {
 
   /**
    * 轮询直到表达式返回真值。超时抛错，错误信息里带上最后一次观测值（便于定位）。
+   *
+   * `...args` 会与 `evaluate` 一样逐个 JSON 化后传给页面函数 —— **必须支持**，
+   * 否则 `waitFor((id) => ..., opts)` 里的 `id` 恒为 `undefined`：轮询表达式每轮立刻抛错、
+   * 等待形同虚设。R1 轮实测踩过这个坑（契约基座上看不出来，因为那里没有动画可等；
+   * 一合入 T5 就表现为「progress 未收敛」的假 FAIL）。
    * @returns 最后一次求值结果
    */
-  async function waitFor(expression, { timeout = options.timeoutMs, interval = 100, label = "条件" } = {}) {
+  async function waitFor(expression, { timeout = options.timeoutMs, interval = 100, label = "条件" } = {}, ...args) {
     const startedAt = Date.now();
     let last;
     for (;;) {
-      last = await evaluate(expression);
+      last = await evaluate(expression, ...args);
       if (last) return last;
       if (Date.now() - startedAt > timeout) {
         throw new Error(
@@ -411,18 +440,48 @@ export async function waitForHooks(session, { timeout = 30000 } = {}) {
     () => Boolean(window.__carDisplayStore?.getState) && typeof window.__carDisplaySceneAudit === "function",
     { timeout, label: "window.__carDisplayStore + __carDisplaySceneAudit 就绪" },
   );
+  // 钩子就绪 = 初始加载已完成。清零导航计数，此后任何一次导航都是**中途重载**
+  // （Vite HMR 整页刷新会清空注入的 mock 与 store 状态，让后续断言失去意义）。
+  session.events.navigations.length = 0;
   return readSnapshot(session);
+}
+
+/**
+ * 断言「本轮未被中途重载」。中途重载（如 T8 正在改代码触发的 HMR 整页刷新）会清空注入的 mock
+ * 与全部 store 状态，使此后所有断言失去意义 —— 必须在报告里显式暴露，不能当作功能失败。
+ */
+export function checkNoReload(reporter, session) {
+  const reloads = session.events.navigations;
+  return reporter.check(
+    "本轮运行期间页面未被重载（重载会清空 mock 与 store 状态，使断言失去意义）",
+    reloads.length === 0,
+    reloads.length === 0
+      ? "无重载"
+      : `发生 ${reloads.length} 次重载：${JSON.stringify(reloads.slice(0, 3).map((item) => item.url))}｜` +
+        `很可能有人在同时改被测代码（Vite HMR），本轮结果不可信，请在代码冻结后重跑`,
+  );
 }
 
 /**
  * 等“集成信号”出现。T5/T7/T8p/T6 未接入时这些信号不会出现，
  * 调用方据此把对应用例标 SKIP 而不是 FAIL（roadmap §12.3：未集成项须明确 skip 标注）。
  */
-export async function waitForIntegrationSignals(session, { timeout } = {}) {
+export async function waitForIntegrationSignals(session, { timeout, require: required } = {}) {
   const startedAt = Date.now();
   const limit = timeout ?? session.options.integrationTimeoutMs;
+  if (!Array.isArray(required) || required.length === 0) {
+    // 必填，且**故意**不提供「等任意信号」的默认值：
+    // `any` 是个陷阱 —— cameraRig/perf/voice 在模块加载时即为真，而 pick/partGeometry 要等
+    // 22 MB 的 GLB 加载完。用 `any` 会在模型加载前就返回，得到**假 SKIP**（R1 轮实测踩过：
+    // 集成分支上 T5 明明已注册 hitTargets=12，却因读得太早被误判为「T5 未集成」）。
+    throw new Error(
+      "waitForIntegrationSignals 必须用 `require: [信号名]` 声明本脚本依赖哪些集成信号，" +
+        "不允许等「任意信号」（会得到假 SKIP）。可用信号见 readSignals()。",
+    );
+  }
+  const satisfied = (signals) => required.every((key) => signals[key]);
   let signals = await readSignals(session);
-  while (!signals.any && Date.now() - startedAt < limit) {
+  while (!satisfied(signals) && Date.now() - startedAt < limit) {
     await delay(250);
     signals = await readSignals(session);
   }
@@ -451,26 +510,238 @@ function readSignals(session) {
 }
 
 /**
- * 把 store 复位到基线：关全部部件与灯光、回 hero 视角、清空 toast。
+ * 把 store 复位到基线：关全部部件与灯光、回 hero 视角、清空 toast，**并等场景停稳**。
  * 用 §13.2 的 action 驱动（`closeAll` / `setCameraView` / `dismissToast`），不直写 state。
+ *
+ * **必须等停稳**：`closeAll()` 与 `setCameraView()` 都触发约 4s 的平滑动画。若复位后立刻读
+ * `hitTargets[].screen`，读到的是运动中的快照 —— R1 轮实测这会造成点击假失败（详见
+ * `waitForSceneSettled` 注释）。未集成 T5/T7 时无动画，本等待瞬间返回，无额外开销。
  */
-export async function resetToBaseline(session) {
+export async function resetToBaseline(session, { view = "hero" } = {}) {
+  // ① **先停待机自转**。顺序不能反：自转进行中时 T7 的同值兜底会因 `modeRef !== FREE` 提前返回，
+  //    `setCameraView` 被忽略；且自转期间「等停稳」永远等不到（相机一直在动），会把整个复位拖到超时。
+  const freeze = await stopIdleAutoRotate(session);
+
+  // ② 关全部部件 + 清 toast。**必须与下面的预设下发分开**，见 ③。
   await session.evaluate(() => {
     const store = window.__carDisplayStore;
     const state = store.getState();
     state.closeAll?.();
-    state.setCameraView?.("hero");
     for (const item of store.getState().toast ?? []) state.dismissToast?.(item.id);
-    state.bumpInteraction?.();
   });
-  await delay(120);
+
+  // ③ 单独下发预设 —— 这是一处**规避补丁**，对应 docs/contracts/CHANGELOG.md 0011（T7 提出、至今未被受理）。
+  //    原因：§13.2 的 setCameraView 是纯赋值，若 cameraView 已是目标值则订阅不触发；T7 在 CameraRig 里
+  //    加了「纯空写」兜底，但该兜底要求**本次状态跃迁中没有任何字段发生变化**。若把 setCameraView 与
+  //    closeAll/bumpInteraction 同批调用，兜底必然提前返回，相机不会回到预设（R1 轮实测：这会让整个
+  //    点击套件基于过期坐标运行）。故此处**必须单独一次 evaluate**。
+  //    T8 受理 0011（落地 applyCameraView + 令牌）后，本补丁可删除，届时直接调 applyCameraView 即可。
+  await session.evaluate((viewId) => window.__carDisplayStore.getState().setCameraView?.(viewId), view);
+
+  // ④ 等场景停稳（相机阻尼 + 部件开合动画都有约 4s 行程）
+  const settle = await waitForSceneSettled(session);
+  return { freeze, settle };
 }
 
 // ───────────────────────────────────────────────────────────────────────────
 // 断言器
 // ───────────────────────────────────────────────────────────────────────────
 
-const MARK = { pass: "[PASS]", fail: "[FAIL]", skip: "[SKIP]", info: "[INFO]" };
+const MARK = { pass: "[PASS]", fail: "[FAIL]", skip: "[SKIP]", known: "[KNOWN]", info: "[INFO]" };
+
+// ───────────────────────────────────────────────────────────────────────────
+// 已知偏差登记表
+// ───────────────────────────────────────────────────────────────────────────
+/**
+ * 经项目负责人**明确裁定**为「已知偏差」、不计入脚本全绿判据的页面噪声。
+ *
+ * 纪律（避免变成偷偷放宽断言）：
+ * 1. **窄匹配**：`match` 必须同时命中精确的特征串，绝不写「忽略所有异常」这类通配。
+ * 2. **显式标注**：命中的条目以 `[KNOWN]` 单独打印并计入汇总，**不并入 PASS**，任何时候都能看见。
+ * 3. **不遮蔽回归**：只有 `match` 命中的文本被放行；同一断言下**任何其它异常仍然 FAIL**。
+ * 4. **可撤销**：`revokeWhen` 写明何时应删除本条目、恢复为 FAIL。
+ */
+export const KNOWN_DEVIATIONS = [
+  // ── 当前为空 ───────────────────────────────────────────────────────────────
+  // 曾经登记过一条 `webgpu-weakmap-texture`（three/webgpu 渲染期间歇抛 `Invalid value used as
+  // weak map key`），经项目负责人裁定按「已知偏差」放行。其 `revokeWhen` 条件已满足 ——
+  // T8 在集成分支 `8d20840` **去掉了 WebGPU 优先分支、强制 WebGL**（未捕获异常 514→0，
+  // `StudioCanvas.jsx` 现只 import `WebGLRenderer`），该异常不再出现（R1 轮四个脚本 KNOWN 均为 0）。
+  // 故**按纪律删除该条目，恢复最严口径**：若该异常日后重新出现，断言必须重新 FAIL，不得静默放行。
+  //
+  // 机制本身保留：日后若再出现必须放行的噪声，仍按顶部四条纪律登记（窄匹配 / 显式标注 /
+  // 不遮蔽回归 / 写明 revokeWhen）。
+];
+
+/** 文本是否命中某条已知偏差；命中返回该条目，否则返回 null。 */
+export function matchKnownDeviation(text) {
+  if (typeof text !== "string") return null;
+  return KNOWN_DEVIATIONS.find((deviation) => deviation.match(text)) ?? null;
+}
+
+/**
+ * 按 CSS 选择器/文案找到 DOM 元素，**确证点击能落在它上面**之后才派发真实点击。
+ *
+ * **为什么必须有这个helper**（R1 轮的血的教训）：我曾用 `getBoundingClientRect()` 取按钮中心后
+ * 直接 `Input.dispatchMouseEvent`，而那个按钮在 `y=1005`、**视口高度只有 900** —— 点击落在视口外，
+ * 根本没打到按钮，我却据此得出「按钮无反应」的结论并当作**端到端确证**上报了一个 P1。
+ * 实际是测试无效：把按钮滚进视口后同一操作完全正常。
+ *
+ * 因此本helper 强制两步：① `scrollIntoView` 保证元素在视口内；② `elementFromPoint` 回验该坐标
+ * 命中的正是目标元素。任一步不满足即返回 `ok:false` 并说明原因，**绝不派发无效点击**。
+ *
+ * @returns {{ ok: boolean, reason?: string, point?: {x:number,y:number}, hit?: string }}
+ */
+export async function clickElement(session, finder) {
+  const located = await session.evaluate((finderSource) => {
+    // finder 以字符串形式传入页面，避免闭包无法序列化
+    const match = new Function("return " + finderSource)();
+    const element = [...document.querySelectorAll("button, [role=\"button\"], a, [data-testid]")].find(match);
+    if (!element) return { ok: false, reason: "未找到匹配元素" };
+    element.scrollIntoView({ block: "center", behavior: "instant" });
+    const rect = element.getBoundingClientRect();
+    const point = { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    const inViewport =
+      point.x >= 0 && point.y >= 0 && point.x <= window.innerWidth && point.y <= window.innerHeight;
+    const hit = document.elementFromPoint(point.x, point.y);
+    const hitText = hit ? `${hit.tagName}|${(hit.textContent ?? "").trim().slice(0, 16)}` : null;
+    const sameNode = hit === element || (hit && element.contains(hit)) || (hit && hit.contains(element));
+    return {
+      ok: inViewport && sameNode,
+      reason: !inViewport
+        ? `坐标 (${point.x},${point.y}) 在视口 ${window.innerWidth}x${window.innerHeight} 之外 —— 点击不会落在元素上`
+        : !sameNode
+          ? `该坐标命中的是 ${hitText}，不是目标元素 —— 可能被遮挡`
+          : undefined,
+      point,
+      hit: hitText,
+    };
+  }, finder.toString());
+  if (!located.ok) return located;
+  await session.mouse.click(located.point.x, located.point.y);
+  return located;
+}
+
+/**
+ * 等场景停稳：**相机位置**与**全部部件的动画进度**都连续若干次采样几乎不动。
+ *
+ * **为什么需要**（R1 轮实测的两个坑）：
+ * 1. `setCameraView()` 是**平滑阻尼**到位、不是瞬移；`closeAll()` / 点击开合也都有约 4s 的
+ *    运动学动画。任何基于 `hitTargets[].screen` 的点击，只要在读坐标前不等停稳，坐标就会在
+ *    CDP 往返期间漂移 —— 薄玻璃（车窗）点不中，甚至打到相邻部件（点 `door_rr` 实际开了 `window_lr`）。
+ * 2. 修好相机、但**漏掉部件动画**同样会失败：`resetToBaseline` 只等 120ms，而关闭动画要 ~4s。
+ *    实测等「相机 + 部件」都停稳后，同一批坐标 **10/10 命中**。
+ *
+ * @returns {{ settled: boolean, samples: number, lastDelta: number, position: number[]|null, partProgress: number[]|null }}
+ */
+export async function waitForSceneSettled(
+  session,
+  { epsilon = 0.01, stableSamples = 3, timeout = 15000, interval = 150 } = {},
+) {
+  const startedAt = Date.now();
+  let previous = null;
+  let stable = 0;
+  let lastDelta = Infinity;
+  let lastPosition = null;
+  let lastProgress = null;
+
+  const sample = () =>
+    session.evaluate(() => {
+      const camera = window.__carDisplayCameraAudit?.() ?? null;
+      const audit = window.__carDisplaySceneAudit?.() ?? null;
+      return {
+        position: Array.isArray(camera?.position) ? camera.position.map((value) => Number(value.toFixed(4))) : null,
+        progress: Array.isArray(audit?.parts)
+          ? audit.parts.map((part) => Number((part.progress ?? 0).toFixed(4)))
+          : null,
+      };
+    });
+
+  for (;;) {
+    const current = await sample();
+    lastPosition = current.position;
+    lastProgress = current.progress;
+    if (previous) {
+      const deltas = [];
+      if (current.position && previous.position) {
+        deltas.push(...current.position.map((value, index) => Math.abs(value - previous.position[index])));
+      }
+      if (current.progress && previous.progress) {
+        deltas.push(...current.progress.map((value, index) => Math.abs(value - previous.progress[index])));
+      }
+      lastDelta = deltas.length ? Math.max(...deltas) : 0;
+      stable = lastDelta <= epsilon ? stable + 1 : 0;
+      if (stable >= stableSamples) {
+        return { settled: true, samples: stable, lastDelta, position: lastPosition, partProgress: lastProgress };
+      }
+    }
+    if (Date.now() - startedAt > timeout) {
+      return { settled: false, samples: stable, lastDelta, position: lastPosition, partProgress: lastProgress };
+    }
+    previous = current;
+    await delay(interval);
+  }
+}
+
+/** @deprecated 用 `waitForSceneSettled`（同时覆盖相机与部件动画）；保留为别名以免旧调用点失效。 */
+export const waitForCameraSettled = waitForSceneSettled;
+
+/**
+ * 停掉 T7 的待机自转，使后续基于屏幕坐标的点击保持有效。
+ *
+ * **为什么需要**：`hitTargets[].screen` 是「当前相机下」的坐标快照。自转期间相机持续移动，
+ * 快照在一次 CDP 往返内就过期了 —— R1 轮实测：目标在 1.5s 内漂移约 40px，足以让薄玻璃
+ * （车窗）点击失败，甚至打到相邻部件（点 `door_rr` 实际开的是 `window_lr`）。
+ *
+ * **为什么用「点空白角落」而不是直接调 store 动作**：`store.bumpInteraction()` 只更新 store 的
+ * `lastInteractionAt`，而 T7 的 `IdleAutoRotate` 维护的是**自己的内部 ref**，只由真实 DOM 事件
+ * 触发的 `notifyInteraction()` 更新。实测直接调 store 动作**停不住**自转，而真实指针事件可以。
+ *
+ * @returns {{ stopped: boolean, autoRotatingBefore: boolean, autoRotatingAfter: boolean }}
+ */
+export async function stopIdleAutoRotate(session, { timeout = 8000, corner = { x: 30, y: 30 } } = {}) {
+  const readRotating = () =>
+    session.evaluate(() => Boolean(window.__carDisplayCameraAudit?.()?.autoRotating));
+  const autoRotatingBefore = await readRotating();
+  if (!autoRotatingBefore) return { stopped: true, autoRotatingBefore, autoRotatingAfter: false };
+
+  await session.mouse.click(corner.x, corner.y); // 空白处：只触发交互信号，不命中任何部件
+  const startedAt = Date.now();
+  let autoRotatingAfter = true;
+  while (autoRotatingAfter && Date.now() - startedAt < timeout) {
+    await delay(150);
+    autoRotatingAfter = await readRotating();
+  }
+  return { stopped: !autoRotatingAfter, autoRotatingBefore, autoRotatingAfter };
+}
+
+/**
+ * 把一批页面噪声按已知偏差条目归并后登记（同类只打印一行 + 次数，避免逐条刷屏）。
+ * @returns {{ known: string[], unknown: string[] }} 命中偏差的文本与未命中的文本
+ */
+export function classifyRuntimeNoise(reporter, texts, label = "运行期异常") {
+  const known = [];
+  const unknown = [];
+  const grouped = new Map();
+  for (const text of texts) {
+    const deviation = matchKnownDeviation(text);
+    if (!deviation) {
+      unknown.push(text);
+      continue;
+    }
+    known.push(text);
+    const entry = grouped.get(deviation.id) ?? { deviation, count: 0, sample: String(text).split("\n")[0] };
+    entry.count += 1;
+    grouped.set(deviation.id, entry);
+  }
+  for (const { deviation, count, sample } of grouped.values()) {
+    reporter.known(
+      `${label}·已知偏差（${deviation.id}）`,
+      `${deviation.reason}｜${count} 次｜实得：${sample}`,
+    );
+  }
+  return { known, unknown };
+}
 
 /**
  * 极简断言器：收集 PASS / FAIL / SKIP，末尾打印汇总并决定退出码。
@@ -504,6 +775,13 @@ export function createReporter({ title, strict = false } = {}) {
     skip(name, reason) {
       record("skip", name, reason);
     },
+    /**
+     * 命中已知偏差登记表的噪声：单独标注、单独计数，**不并入 PASS**，也不计入失败。
+     * 用途见 `KNOWN_DEVIATIONS` 顶部的纪律说明。
+     */
+    known(name, detail) {
+      record("known", name, detail);
+    },
     /** condition 为真 → PASS；否则 FAIL。detail 建议写成「期望 X，实得 Y」。 */
     check(name, condition, detail) {
       if (condition) record("pass", name, detail);
@@ -535,7 +813,7 @@ export function createReporter({ title, strict = false } = {}) {
     get counts() {
       return results.reduce(
         (accumulator, item) => ({ ...accumulator, [item.status]: (accumulator[item.status] ?? 0) + 1 }),
-        { pass: 0, fail: 0, skip: 0 },
+        { pass: 0, fail: 0, skip: 0, known: 0 },
       );
     },
     get results() {
@@ -549,12 +827,18 @@ export function createReporter({ title, strict = false } = {}) {
       console.log("");
       console.log(`── ${title} 汇总 ──────────────────────────────`);
       console.log(
-        `合计 ${results.length} 项：PASS ${counts.pass} / FAIL ${counts.fail} / SKIP ${counts.skip}　用时 ${elapsed}s` +
+        `合计 ${results.length} 项：PASS ${counts.pass} / FAIL ${counts.fail} / SKIP ${counts.skip} / KNOWN ${counts.known}　用时 ${elapsed}s` +
           (strict ? "　（--strict：SKIP 计入失败）" : ""),
       );
       if (counts.skip > 0) {
         console.log("SKIP 明细：");
         for (const item of results.filter((entry) => entry.status === "skip")) {
+          console.log(`  · ${item.name} —— ${item.detail}`);
+        }
+      }
+      if (counts.known > 0) {
+        console.log("KNOWN 明细（经负责人裁定的已知偏差，不计入失败；条目定义见 scripts/lib/cdp.mjs 的 KNOWN_DEVIATIONS）：");
+        for (const item of results.filter((entry) => entry.status === "known")) {
           console.log(`  · ${item.name} —— ${item.detail}`);
         }
       }

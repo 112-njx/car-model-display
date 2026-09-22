@@ -29,6 +29,8 @@ import {
   delay,
   waitForHooks,
   waitForIntegrationSignals,
+  classifyRuntimeNoise,
+  checkNoReload,
 } from "./lib/cdp.mjs";
 
 const MOCK_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "mocks", "speech-recognition-mock.js");
@@ -88,13 +90,26 @@ const CASES = [
   { say: "打开车灯", note: "§13.1 别名「车灯」", after: { lights: { headlight: true, taillight: false } } },
 ];
 
+/**
+ * 把「只列出被打开项」的期望补全为**全量**期望：未列出的部件一律视为关闭。
+ *
+ * 必要性（R1 轮实测的脚本缺陷）：CASES 里 `opened([...])` 只写被打开的**子集**（如 4 个车窗），
+ * 而全量比对要求键数相等 ⇒ 子集与 10 键的实际状态**永远不等**，`matches` 恒为假、
+ * 表现为「断言 FAIL 但 diffOf 说状态一致」的自相矛盾。
+ * 补全后既修掉该缺陷，又保留「抓过度触发」的严格性（如「打开车窗」若把车门也开了仍会被抓到）。
+ */
+function normalize(expected, ids) {
+  const full = Object.fromEntries(ids.map((id) => [id, false]));
+  return { ...full, ...(expected ?? {}) };
+}
+
 /** 期望状态与页面快照是否一致（逐键比对，避免 JSON 键序干扰） */
 function matches(snapshot, expected) {
   const sameMap = (actual, wanted) =>
-    Object.keys(wanted).every((key) => actual?.[key] === wanted[key]) &&
-    Object.keys(actual ?? {}).length === Object.keys(wanted).length;
-  if (expected.parts && !sameMap(snapshot.state.parts, expected.parts)) return false;
-  if (expected.lights && !sameMap(snapshot.state.lights, expected.lights)) return false;
+    Object.keys(wanted).length === Object.keys(actual ?? {}).length &&
+    Object.keys(wanted).every((key) => actual?.[key] === wanted[key]);
+  if (expected.parts && !sameMap(snapshot.state.parts, normalize(expected.parts, PART_IDS))) return false;
+  if (expected.lights && !sameMap(snapshot.state.lights, normalize(expected.lights, LIGHT_IDS))) return false;
   if (expected.cameraView && snapshot.state.cameraView !== expected.cameraView) return false;
   if (expected.orbitOnce && snapshot.state.cameraCommand?.type !== "orbit-once") return false;
   return true;
@@ -102,11 +117,12 @@ function matches(snapshot, expected) {
 
 const diffOf = (snapshot, expected) => {
   const lines = [];
-  for (const [key, wanted] of Object.entries(expected.parts ?? {})) {
+  // 同样补全为全量：否则「某个部件**本应关闭却开着**」这类过度触发/漏复位会漏报
+  for (const [key, wanted] of Object.entries(expected.parts ? normalize(expected.parts, PART_IDS) : {})) {
     const actual = snapshot.state.parts?.[key];
     if (actual !== wanted) lines.push(`parts.${key} 期望 ${wanted} 实得 ${actual}`);
   }
-  for (const [key, wanted] of Object.entries(expected.lights ?? {})) {
+  for (const [key, wanted] of Object.entries(expected.lights ? normalize(expected.lights, LIGHT_IDS) : {})) {
     const actual = snapshot.state.lights?.[key];
     if (actual !== wanted) lines.push(`lights.${key} 期望 ${wanted} 实得 ${actual}`);
   }
@@ -121,7 +137,7 @@ const diffOf = (snapshot, expected) => {
 
 await run("verify-voice", async ({ session, reporter }) => {
   const initial = await waitForHooks(session);
-  const signals = await waitForIntegrationSignals(session);
+  const signals = await waitForIntegrationSignals(session, { require: ["voice"] });
   reporter.info(`集成信号：${JSON.stringify(signals)}`);
 
   // ── 0. 集成门禁：注入点由 T6 提供 ───────────────────────────────────────
@@ -158,14 +174,32 @@ await run("verify-voice", async ({ session, reporter }) => {
   );
 
   // ── 2. 找到「开始识别」的驱动入口 ───────────────────────────────────────
-  /** 先看是否已有实例；没有就尝试点 T6/T4 的语音入口（§12.1 冻结的 `cd-voice-` 类名前缀） */
+  /**
+   * 驱动入口优先级：
+   * ① `window.__carDisplayVoiceStart()` —— T8 受理 CHANGELOG 0010（原 T9 建议的方案①）后新增的
+   *    **程序化入口**，对已挂载控制器批量下发 start，返回受影响数量（未挂载返回 0、不抛错）。
+   *    这是确定性最强的路径，不受 T4/T6 的样式与挂载改动影响，故**优先使用**。
+   * ② 退化路径：点 UI 入口（§12.1 冻结的 `cd-voice-` 前缀，或 T8 新增的 `data-testid="cd-voice-toggle"`）。
+   *    仅在 ① 不可用（未受理/未挂载）时使用，并在 [INFO] 里注明走了退化路径。
+   */
+  const triggerVoiceStart = async () => {
+    const driven = await session.evaluate(() => {
+      if (typeof window.__carDisplayVoiceStart !== "function") return null;
+      const affected = window.__carDisplayVoiceStart();
+      return { affected, count: window.__carDisplayVoiceControllerCount?.() ?? null };
+    });
+    if (driven) return { via: "__carDisplayVoiceStart()", ...driven };
+    return null;
+  };
+
+  /** 退化路径：点 T6/T4 的语音入口（§12.1 冻结的 `cd-voice-` 类名前缀 + T8 的 data-testid） */
   const triggerVoiceEntry = async () => {
     const clicked = await session.evaluate(() => {
       const isVisible = (element) => {
         const rect = element.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
       };
-      const candidates = [...document.querySelectorAll('button, [role="button"], [class*="cd-voice"]')]
+      const candidates = [...document.querySelectorAll('button, [role="button"], [data-testid="cd-voice-toggle"], [class*="cd-voice"]')]
         .filter((element) => isVisible(element))
         .filter(
           (element) =>
@@ -194,12 +228,23 @@ await run("verify-voice", async ({ session, reporter }) => {
 
   let instances = await session.evaluate(() => window.__carDisplaySpeechRecognitionMock.instances.length);
   let entry = null;
-  if (instances === 0) entry = await triggerVoiceEntry();
+  if (instances === 0) {
+    // 优先程序化入口（CHANGELOG 0010 方案①）；不可用再退化为点 UI
+    entry = await triggerVoiceStart();
+    if (!entry) entry = await triggerVoiceEntry();
+  }
   instances = await session.evaluate(() => window.__carDisplaySpeechRecognitionMock.instances.length);
   reporter.info(
-    `mock 实例数 = ${instances}${entry ? `，已点击语音入口 ${JSON.stringify(entry)}` : ""}` +
+    `mock 实例数 = ${instances}${entry ? `，驱动入口 ${JSON.stringify(entry)}` : ""}` +
       `，listening = ${await session.evaluate(() => window.__carDisplaySpeechRecognitionMock.listening().length)}`,
   );
+  if (entry?.via === "__carDisplayVoiceStart()") {
+    reporter.check(
+      "程序化驱动入口 __carDisplayVoiceStart() 生效（CHANGELOG 0010 方案①已受理落地）",
+      entry.affected > 0,
+      `受影响控制器数=${entry.affected}，控制器总数=${entry.count}`,
+    );
+  }
 
   if (instances === 0) {
     reporter.skip(
@@ -283,7 +328,13 @@ await run("verify-voice", async ({ session, reporter }) => {
 
   // ── 4. 错误路径：权限拒绝（§11.1 T6 降级路径）───────────────────────────
   await resetToBaseline(session);
-  await session.evaluate(() => window.__carDisplaySpeechRecognitionMock.instances.at(-1)?.start?.());
+  // **只在未在听时才 start**：mock 刻意实现为「重复 start() 抛 InvalidStateError」（与真实
+  // SpeechRecognition 语义一致，T9-01 已自测）。若链路已经处于 listening，再调一次会直接抛错，
+  // 把整个脚本打断 —— R1 轮实测踩过。故先判 listening 再决定是否驱动。
+  await session.evaluate(() => {
+    const mock = window.__carDisplaySpeechRecognitionMock;
+    if (mock.listening().length === 0) mock.instances.at(-1)?.start?.();
+  });
   const receiversOnError = await session.evaluate(() => window.__carDisplaySpeechRecognitionMock.fail("not-allowed", "用户拒绝麦克风权限"));
   await delay(400);
   const afterError = await readSnapshot(session);
@@ -308,11 +359,22 @@ await run("verify-voice", async ({ session, reporter }) => {
     `注入前 ${JSON.stringify(supportedBefore)} → 恢复后 ${JSON.stringify(afterRestore.state.voice.supported)}`,
   );
 
+  // ── 5.5 本轮是否被中途重载 ──────────────────────────────────────────────
+  // 重载会清空注入的 mock 与 store 状态（T8 同时在改代码时 Vite 会整页刷新），本轮结果不可信。
+  checkNoReload(reporter, session);
+
   // ── 6. 页面运行期异常 ───────────────────────────────────────────────────
+  // 经负责人裁定的已知偏差（见 scripts/lib/cdp.mjs 的 KNOWN_DEVIATIONS）单独标注，不并入 PASS；
+  // 其余任何异常仍然 FAIL —— 本断言**只**对登记在册的窄特征放行，不遮蔽回归。
+  const { known: knownExceptions, unknown: unknownExceptions } = classifyRuntimeNoise(
+    reporter,
+    session.events.exceptions,
+  );
   reporter.check(
-    "运行期无未捕获异常 / console.error",
-    session.events.exceptions.length === 0 && session.events.consoleErrors.length === 0,
-    `exceptions=${JSON.stringify(session.events.exceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}`,
+    "运行期无非已知偏差的未捕获异常 / console.error",
+    unknownExceptions.length === 0 && session.events.consoleErrors.length === 0,
+    `非已知偏差异常=${JSON.stringify(unknownExceptions.slice(0, 3))} consoleErrors=${JSON.stringify(session.events.consoleErrors.slice(0, 3))}` +
+      (knownExceptions.length ? `（另有 ${knownExceptions.length} 条已裁定偏差，见 KNOWN 明细）` : ""),
   );
 
   return { signals, instances, caseResults, supportedBefore };
