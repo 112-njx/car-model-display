@@ -527,6 +527,100 @@
 
 ---
 
+## Wave 1 · T7 相机指令化与待机自转
+
+### 记录 T7-01 · 2026-09-22 · A 段（契约无关）：待机自转 / orbit-once 环绕 / 预设阻尼助手
+
+- **轮次目标**：在不等 `contract-v1` 的前提下，把 T7 的契约无关部分做完并独立自测：空闲定时器、自转/环绕/拖拽三态互斥、orbit-once 环绕路径、预设阻尼曲线与插值助手。B 段（接真实 store + 注册 §13.3 审计）待 `contract-v1`。
+- **改动文件**（仅 T7 独占的两个文件，`git status` 已核对无越界）：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/components/scene/IdleAutoRotate.jsx` | **新建**（约 300 行）：① 纯函数层 `damp`/`orbitEase`/`orbitAzimuthAt`/`sphericalOf`/`positionOf`/`dampXYZ`/`distanceXYZ`/`isIdleElapsed` + `readXYZ`/`writeXYZ` 分量访问器；② 状态机与帧循环：空闲定时器、`IDLE_MODES = {FREE, AUTO, ORBIT}`、环绕/自转的相机独占写权 |
+  | `app/src/components/scene/CameraRig.jsx` | A 段占位接线：挂载 `IdleAutoRotate`（props 驱动，未读新 store）、预设阻尼改用共享助手、扩展 DEV 自测钩子（`__t7DebugOrbitOnce`、audit 增加 mode/autoRotating/orbiting/frames） |
+- **关键决策**：
+  1. **三项 §13 疑问已由人工拍板**（开工前问答）：① orbit-once 的"回正"= 回到**触发时的方位角**（半径/极角保持用户当前值，不重置缩放）；② `store.autoRotate` = **T7 写入的运行时状态**（初值 false 表示"当前未自转"，待机自转默认生效，满足 DoD）；③ 审计走 `registerSceneAuditSource('camera', fn)`，由 T2 合并进 `__carDisplayCameraAudit()`——B 段核对 `contract-v1`，若缺该合并逻辑则按 §13.4 在 `CHANGELOG.md` 登记一行交 T2。
+  2. **挂载方式**：`IdleAutoRotate` 是 `return null` 的非视觉组件，**由 `CameraRig` 自包含挂载**（`CameraRig` 已被 `StudioCanvas` 挂载）→ **T8 无需为 T7 改 `App.jsx`**，A/B 两段都不需要临时改 App 自测。
+  3. **互斥实现**：不靠禁用 OrbitControls，而是①帧内写权独占（非 `free` 模式时 `CameraRig` 让出预设阻尼）；②把"任意输入即停"的监听挂在 **window 捕获相**，先于 OrbitControls 自己的 domElement 监听执行 → 指针按下当帧模式已回 `free`，**这一次拖拽不会被吞**。实测证明：禁用 `controls.enabled` 会连带 drei 的 `useFrame(() => controls.update())` 一起停摆（`lookAt` 不再更新），故不采用。
+  4. **自转保留用户视角**：半径/极角每帧从当前位置反解，只推进方位角；起步用 `damp` 加速约 1.5s 到速（`autoRotateSpeed=0.16 rad/s ≈ 39s/周`），避免"啪"地开始。
+- **关键问题（现象 → 根因 → 修法）**：
+  1. **相机坐标变 NaN，连带 WebGPU 报错、R3F 帧循环停摆**。现象：环绕/自转启动后 `position` 变 `[NaN,NaN,NaN]`，控制台刷 `TypeError: Invalid value used as weak map key`（three_webgpu `Textures.updateTexture`），此后画面完全不动。根因：我误以为 `three.Vector3` 支持 `v[0]` 下标访问——**它不支持**（只有 `.x/.y/.z`），`sphericalOf(camera.position, …)` 读出 `undefined` → 半径/极角 NaN → 位置 NaN → 投影矩阵 NaN 污染 WebGPU 绑定。修法：纯函数层加 `readXYZ`/`writeXYZ` 兼容访问器；帧循环加非有限值守卫（拒绝写入并交还控制权）。
+  2. **预设平滑切换完全失效**（"点正面/侧面/复位没反应"）。现象：`dampXYZ(camera.position, …)` 后相机纹丝不动。根因：同一误判的写侧——`current[0] = …` 在 Vector3 上写的是 `"0"` 野属性，`.x/.y/.z` 从未被改。修法：同上（`writeXYZ`）。**A/B 已确认基线预设阻尼本身正常**（未改动的 main 上四个预设均精确到位）。
+  3. **orbit-once 慢 1000 倍、永不结束**。现象：`orbitElapsed` 一路涨过 6.0 而相机几乎不动、`mode` 永远停在 `orbit`。根因：`elapsed` 按秒累加（useFrame 的 delta），却除以**毫秒**的 `orbitOnceDurationMs=6000`。修法：统一到秒（`orbitDurationMs / 1000`）。
+  4. **加固（非 bug，预防）**：① 指针按下期间不进入自转（长按拖拽不会被自转抢写）；② `pointerup/pointercancel` 也计入交互（计时以最后一次输入为准）；③ 单帧步长上限 0.1s（切后台回来不跳变）。
+  5. **自测脚本自身的三处断言 bug**（记录以免 T9 重蹈）：① `angDiff` 会把 2π 回绕成 0，不能用它断言"扫过一周"；② 环绕检查点设在 5.3s 而规格是 6000ms，误判"未结束"；③ 把 `pointerMove/pointerUp` 当成计时起点（只有 `pointerdown/wheel/keydown` 会重置计时）→ 实测 6.6s 被误判为"提前自转"。
+  6. **headless WebGPU 下 `Page.captureScreenshot` 取不到真帧**：三张不同时刻的截图 **md5 完全相同**（陈旧合成帧）。视觉确认改走 **WebGL 回退（注入脚本隐藏 `navigator.gpu`）+ `preserveDrawingBuffer` + `canvas.toDataURL`**，四帧 md5 互不相同。
+  7. **一条 WebGPU 控制台报错的观察项**：在中间版本（修 NaN 之前/之后的过渡态）出现过 `Invalid value used as weak map key`；**最终版连续两轮完整自测分段错误计数全为 0**，且未改动的基线在同一套相机动作（绕圈拖拽 + 缩放 + 四预设）下也是 0 错误。判定：非稳定复现，登记为观察项（见遗留项）。
+- **自测结果**（真实浏览器 Edge 153 headless + CDP，脚本在仓库外 `%TEMP%\t7-*.mjs`，不随分支交付）：
+  - **`npm run build`**：✅ 通过（`✓ built in 31.57s`）。
+  - **CDP 行为自测 45/45 全绿，连续两轮**（run6/run9），分段错误计数 `初始/自转后/拖拽后/环绕后/预设后` 全为 0：
+    - 纯函数层：`damp` 与 `MathUtils.damp` 同式、`orbitEase` 单调且两端角速度≈0（起步 0.015 / 中段 1.5）、**一周精确回正（扫掠 6.283185 rad、方位角等价差 0）**、球坐标↔位置往返误差 1.2e-15、Vector3 与数组两条代码路径一致且无野属性、退化输入（位置=目标）不出 NaN。
+    - 待机自转：3s 未自转 ✅ → **9.2s 进入自转** ✅；自转 2s 扫过 0.32 rad（≈38.9s/周）✅；半径保持 10.4586→10.4586 ✅。
+    - 交互即停：`pointerdown` 当帧停 ✅；停下后相机静止 ✅；**同一次按下即可正常拖拽（位移 5.37，控制权未被吞）** ✅；交互后 5s 未自转、约 8s 才重新自转（实测 9.8s）✅；按键即停 ✅。
+    - orbit-once：启动 `orbiting=true` ✅；**时长实测 6.02s（规格 6000ms）** ✅；最大扫掠 3.09 rad（≥半周）✅；**结束后精确回正（偏差 0 rad）** ✅；半径保持 ✅；坐标仍为有限值（NaN 回归）✅；token 自增可重复触发 ✅；用户拖拽打断 → 立即 `orbiting=false`、**保留当前角度不回正（扫掠 1.386→1.386 rad）** ✅、打断后可正常拖拽 ✅。
+    - 预设：front/profile/hero 均为"非瞬移 + 阻尼到位"，误差 ≤0.00001 ✅；`CameraAudit` 雏形字段（view/position/target/distance/autoRotating/orbiting）齐备 ✅；滚轮缩放 10.459→9.936 ✅；控制台 0 错误 ✅。
+  - **A/B 对照（基线 = 未改动的 main，5181）**：绕圈拖拽 + 缩放 + 四预设后 **0 错误**、预设阻尼精确到位 → 证明上面的 bug 都是我引入并已修掉，不是基线既有问题。
+  - **视觉确认（人工看图，非仅断言）**：`t7v-orbit0.png` 车头左前 3/4 视角；`t7v-orbit50.png` **同一辆车已绕到车尾右侧（方位角差 3.22 rad ≈ 185°）**，车身姿态/构图/地面光带正常；`t7v-orbit100.png` **与 orbit0 完全同一视角（回正）**；`t7v-autorotate.png` 自转中（方位角 0.73→1.081）。
+- **commit**：`eec80a8`（分支 `wave1/t7`，已 push 到 origin）
+- **遗留项**：
+  1. **B 段待 `contract-v1`**：`git fetch origin` 显示 T2 尚未推送（远程只有 `main`）。A 段已完成，转入《挂载说明》与边界用例补齐，不空转。
+  2. A 段占位物需在 B 段清理：`__t7DebugOrbitOnce`（DEV 临时触发）→ 改由 `store.cameraCommand.token`；`orbitToken` 本地 state → 读 store；`__formdriveCameraAudit`（旧 FormDrive DEV 钩子）→ 按 §13.3 换成 `__carDisplayCameraAudit` 并 `registerSceneAuditSource('camera', fn)`；`autoRotate`/`bumpInteraction` 接新 store。
+  3. **观察项**：headless WebGPU 下那条 `Invalid value used as weak map key` 曾在过渡版本出现、最终版未复现；真机/其他 GPU 上是否出现需 T8/T9 关注（若再现，优先怀疑 WebGPU 纹理绑定与相机路径的时序，而非 T7 逻辑）。
+  4. **移动端真机未验**：触摸拖拽/双指缩放与自转的互斥、8s 待机在手机上的体感，只能真机确认（T9 的 `qa-checklist` + T8 联调）；本轮只在桌面 headless 验证。
+  5. `docs/debug.md` 是九个 Agent 的共同追加目标，**T8 合并时预期在此文件产生冲突**，按"保留各方记录"解决即可。
+
+---
+
+### 记录 T7-02 · 2026-09-22 · B 段（接线）：CameraRig 接契约 store + 注册 §13.3 相机审计；边界用例与两处真实缺陷
+
+- **轮次目标**：`contract-v1` 就绪后接线：`cameraView` 驱动预设平滑切换、`cameraCommand='orbit-once'` 按 token 重复触发、自转状态写回 `store.autoRotate`、按 §13.3 注册相机审计；补互斥边界用例。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/components/scene/CameraRig.jsx` | 改读 `config/carConfig.js`（`CAMERA_VIEWS`/`INTERACTION`）+ `state/useCarStore.js`；`registerSceneAuditSource` 注册 **`autoRotating`/`orbiting`/`position`/`target`/`distance` 五键**；`onInteraction→bumpInteraction`、`onAutoRotateChange→setAutoRotate`；`minDistance` 4.1→3.4；新增"同值重复下发预设"兜底订阅；新增可选 prop `autoRotateEnabled`（默认 true）；移除 A 段占位物（`__t7DebugOrbitOnce`、本地 token state、旧 `__formdriveCameraAudit`），DEV 诊断改为 T7 私有 `__carDisplayCameraDebug` |
+  | `app/src/components/scene/IdleAutoRotate.jsx` | api 增加 `isPointerActive()`（供兜底订阅避开拖拽期） |
+  | `docs/contracts/CHANGELOG.md` | 追加 0010（预设缺"可重复触发"机制，**只增**提案）、0011（`detail` 机位与 `minDistance` 冲突，T7 侧已处置） |
+- **关键决策**：
+  1. **审计按 T2 的 key 落点注册**：`auditHooks.js` 的 `CAMERA_KEYS` 把 `view/position/target/distance/autoRotating/orbiting` 路由进 `__carDisplayCameraAudit()`，故 T7 注册其中五键（`view` 由 store 基准提供）。
+  2. **不重复注册 scene 级 `autoRotate`**：§13.3② 的该字段基准值来自 `store.autoRotate`，而本组件正是唯一写入者，store 值即场景真相，再注册一份反而制造两个真相源。
+  3. **待机自转默认生效**（按人工拍板：`store.autoRotate` 是 T7 写入的运行时状态），同时留 `autoRotateEnabled` 开关给 T8 联调。
+  4. **`git` 流程事件（需人工知悉）**：B 段按任务书 rebase 到 `contract-v1` 后，推送被拒（远程仍是 rebase 前的提交），而规则禁止 force push。**处置：不 force push**，改为 `reset --hard origin/wave1/t7` → `merge origin/contract-v1` → `cherry-pick` B 段提交 → fast-forward 推送成功（`0393ac6`）。**副作用为零**：A 段两个 commit hash（`eec80a8`/`1018cb7`）仍是祖先，debug.md 里记录的 hash 不失效；与 T2 的 `docs/debug.md` 冲突按"两边记录都保留"解决（T2 段在前、T7 段在后，配置表保留 T2 的 5/6 行、T7 的行改号为 7）。
+- **关键问题（现象 → 根因 → 修法）**：
+  1. **`detail` 预设永远到不了位**（残差 0.271）。现象：切到"细节"后相机停在距目标 0.27 处。根因：`CAMERA_VIEWS.detail` 机位距其注视点 **3.83**，而 `OrbitControls.minDistance`（T1 基线值 4.1，§13.1 未冻结、属 T7 文件内常量）把距离夹住。修法：`minDistance` → **3.4**（本文件内改动，未动契约）；已记 CHANGELOG 0011 备人工确认取向。修后 `detail` 误差 0。
+  2. **同一预设重复下发静默失效**（"拖走后点『复位』没反应"）。现象：用户拖拽（不改变 `cameraView`）后点「复位」，`setCameraView('hero')` 是**同值赋值** → store 不产生状态变化 → T7 的 `view` effect 不触发 → 相机不动。根因：§13.2 只给 `orbitOnce` 配了自增 token（"保证同一命令可重复触发"），预设缺同一机制，而「复位」恰是最高频的重复下发路径。修法：① 按 §13.4 登记 **CHANGELOG 0010**（提案新增 `applyCameraView(viewId)`，只增不改）；② 过渡期在 `CameraRig` 内加**兜底订阅**——识别"所有字段引用都没变的空写"（zustand 每次 set 都通知订阅者），并以 `mode===free` + 非动画中 + 指针未按下 + 未在位 四重守卫压小误命中面；T2 落地 0010 后整段删除。**局限已在代码注释中写明**：其他同值空写（如 `setPart` 写入相同值）也会命中，此时会把相机拉回当前预设。
+  3. **自测脚本的两个真实缺陷（务必告知 T9）**：
+     - **裸 `import()` 会拿到 HMR 的第二份模块实例**。现象：B 段自测中途大面积失败——`store.cameraView` 已是 `profile` 而组件闭包仍是 `hero`、`orbitOnce()` 的 token 6→7 但环绕不启动。取证：`performance.getEntriesByType('resource')` 同时存在 `…/useCarStore.js?t=1790046904685`（应用侧）与 `…/useCarStore.js`（脚本侧裸 import）；更糟的是裸 import 会重跑 `installAuditHooks`，把 `window.__carDisplayStore` **劫持到脚本自己的副本**上。修法：**驱动一律走 §13.3① 的 `window.__carDisplayStore`，绝不裸 import store 模块**。→ 建议 T9 的 `verify-*.mjs` 照此办理。
+     - **输入坐标写死 `(700,450)`**：换到视口仅 500×450 的实例后，事件全部落在视口外（`document.elementFromPoint(720,450) === null`），拖拽/缩放必然假红。修法：按 `canvas.getBoundingClientRect()` 取中心派发。
+  4. **WebGPU 偶发报错与整页失响应（环境级，基线可复现）**。现象：`TypeError: Invalid value used as weak map key`（three_webgpu `Textures.updateTexture`），一次 12 条后停止；严重时页面后续不再响应 CDP（脚本卡死）。归因取证：**未改动的基线在全新浏览器实例上同样报 12 条**（加载期、`dataset.renderer` 尚为 undefined 时），其后 3 轮缓慢拖拽 + 3 轮预设均不再增加；而**同一套相机运动在 WebGL 回退下 0 条**。判定：非 T7 逻辑引入，属该环境下 WebGPU 渲染器的既有偶发（疑似纹理/阴影绑定在流式加载与相机运动交叠时的时序问题），已升级为遗留项供 T8 决策。
+- **自测结果**（真实浏览器 Edge 153 headless + CDP，脚本在仓库外 `%TEMP%\t7-*.mjs`，不随分支交付）：
+  - **`npm run build`**：✅ 通过（`✓ built in 26.98s`）。
+  - **B 段 CDP 自测 57/57 全绿**（`t7b-run2.txt`，健康实例、无 HMR 分裂）：契约钩子就绪；`CameraAudit` 六字段非空且 `position` 全有限；`SceneAudit.cameraView/autoRotate` 与 store 一致；待机 3s 未自转 → **约 8s 进入自转**（自转时 `store.autoRotate` 与 `SceneAudit.autoRotate` 同为 true）；自转 2s 扫过 0.26 rad；`pointerdown` 当帧停转且 `store.autoRotate` 回落 false、`lastInteractionAt` 落到本次输入（Δ=3ms）；**同一次按下即可正常拖拽**（位移 5.43，控制权未被吞）；交互后 5s 未自转、约 8s 重新自转（9.73s）；按键即停；`carStore.orbitOnce()` → `orbiting=true` 且 `store.autoRotate` 保持 false；**环绕时长实测 6.03s（规格 6000ms）**、最大扫掠 3.06 rad、**结束后回正偏差 0 rad**、半径保持；坐标仍为有限值（NaN 回归）；token 自增可重复触发；拖拽打断环绕立即 `orbiting=false` 且**保留当前角度不回正**；环绕中滚轮：打断 + 缩放生效；**自转中下发 orbit-once → 环绕接管**；**环绕中切换预设 → 环绕取消**且 bumpInteraction；四预设（含 `detail`）全部"非瞬移 + 误差 0 + view/场景审计同步"；**同值重复下发「复位」仍能重新到位（误差 0.00011）**；滚轮缩放 10.459→9.936；控制台 0 错误。
+  - **视觉确认（WebGL 回退 + `canvas.toDataURL` 真帧）**：`t7v-orbit0.png` 与 `t7v-orbit100.png` **md5 完全相同**（像素级精确回正）；`t7v-orbit50.png` 方位角差 3.27 rad ≈187°（已绕到车尾另一侧）；`t7v-autorotate.png` 自转中（方位角 0.73→0.94）；**控制台错误 0 条**。
+  - **A/B 归因**：基线（未改动 main）在同一套相机动作下同样出现该 WebGPU 报错 → 与 T7 无关。
+- **commit**：`0393ac6`（含 `203e48e` 的 merge；已 push 到 `origin/wave1/t7`）
+- **遗留项**：
+  1. **CHANGELOG 0010 待 T2 受理**（预设可重复触发）；落地后删除 `CameraRig.jsx` 中的兜底订阅。0011 待人工确认取向（改机位 or 改距离上限）。
+  2. `__carDisplayCameraDebug()` 是 T7 **私有 DEV 诊断**（帧计数/模式/环绕进度），不属于 §13.3 契约；T8 若认为多余可连同 IdleAutoRotate 的 `debug()` 一起删。
+  3. **WebGPU 稳定性观察项**（见上）：真机/录屏若遇页面失响应，建议以 WebGL 回退运行；是否强制 WebGL 属 T8/部署决策。
+  4. **移动端真机未验**：触摸拖拽/双指缩放与自转的互斥、8s 待机体感只能真机确认（T9 清单 + T8 联调）。
+  5. `docs/debug.md` 与 `docs/contracts/CHANGELOG.md` 都是多 Agent 共同追加目标，T8 合并时预期冲突（本次 merge 已实际发生一次，按"两边都保留"解决）。
+
+### 《T7 挂载/接入说明（交 T8）》
+
+1. **无需改 `App.jsx` 挂载任何 T7 组件**：`IdleAutoRotate` 是非视觉组件（`return null`），由 `CameraRig` 自包含挂载；而 `CameraRig` 已被现有 `StudioCanvas.jsx` 挂载。T7 全程未改 `App.jsx`/`main.jsx`/`StudioCanvas.jsx`。
+2. **import 路径与 props**：
+   - `app/src/components/scene/CameraRig.jsx` → `export function CameraRig({ autoRotateEnabled = true })`；唯一的可选 prop 是 `autoRotateEnabled`（默认 true，传 `false` 即关闭待机自转，供联调/演示需要时用）。**没有任何必需 props**。
+   - `app/src/components/scene/IdleAutoRotate.jsx` → 导出 `IdleAutoRotate`（组件，props 见文件头注释）+ 纯函数层（`damp`/`orbitEase`/`orbitAzimuthAt`/`sphericalOf`/`positionOf`/`dampXYZ`/`distanceXYZ`/`isIdleElapsed`/`readXYZ`/`writeXYZ`）+ 常量（`IDLE_MODES`/`IDLE_ROTATE_DEFAULTS`/`ORBIT_SWEEP_RAD`）。**只有 `CameraRig` 需要挂载它**，其他模块若要用曲线/球坐标工具可直接 import 纯函数。
+3. **css**：**无**。T7 不产出任何样式文件，也不需要 `tokens.css`/`style.css` 的配合（自转/环绕只写相机）。
+4. **store 契约依赖（只读）**：读 `cameraView`、`cameraCommand`；写 `setAutoRotate`、`bumpInteraction`；调 `registerSceneAuditSource`。**未改任何契约文件**（`docs/contracts/CHANGELOG.md` 仅按 §13.4 追加 0010/0011 两行）。
+5. **可调参数位置（联调时改这里，不要改契约）**：
+   - 待机延时/环绕时长：`carConfig.INTERACTION.idleAutoRotateDelayMs` / `orbitOnceDurationMs`（§13.1 冻结，改需走 CHANGELOG）。
+   - 自转角速度（0.16 rad/s ≈ 39s/周）、起步加速系数、预设阻尼系数（4.8/5.2）、到位阈值（0.006）：`IdleAutoRotate.jsx` 的 `IDLE_ROTATE_DEFAULTS`（T7 内部调参，不在契约内）。
+   - 缩放范围与俯仰限制：`CameraRig.jsx` 的 `minDistance`(3.4)/`maxDistance`(13)/`minPolarAngle`/`maxPolarAngle`。
+6. **T9 脚本对接要点**：① `__carDisplayCameraAudit()` 的 `view/position/target/distance/autoRotating/orbiting` 六字段在 T7 挂载后即全量可用（`view` 来自 store，其余由 T7 注册）；② 触发"转一下"请调 `__carDisplayStore.getState().orbitOnce()`，触发预设请调 `setCameraView(id)`，**不要裸 `import()` store 模块**（见记录 T7-02 问题 3）；③ 判定"待机自转中"用 `autoRotating`，判定"环绕中"用 `orbiting`，二者互斥且都不会与用户拖拽同时为真；④ 待机自转默认**开启**，脚本若要测"8s 待机"需在无任何输入的前提下等待（任何 `pointerdown`/`wheel`/`keydown`/预设/环绕指令都会重置计时）。
+7. **已知行为约定（供 T8/T9 判断"是不是 bug"）**：环绕被用户拖拽打断时**不回正**（保留当前角度，从该角度继续）；环绕结束才精确回正到触发时方位角；自转保留用户当前的缩放与俯仰，只推进方位角。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -544,3 +638,5 @@
 | 9 | **手机端语音测试需 https** | 局域网 `http://10.14.6.9:<port>` 属**非安全上下文**，Web Speech API 在手机上不可用（页面会显示中文降级提示，属预期行为）。手机真机语音验收须等 T10b 的 https 在线地址；开发期仅可用桌面 Chrome/Edge 的 localhost。 | 待处理（依赖 T10b） |
 | 10 | 改 `~/.claude/settings.local.json` 被分类器拦下 | T8p 经人工同意后尝试在该文件的 `permissions.allow` 里追加两条 Edge 放行规则，连续两次被 Claude Code 的 auto mode 分类器以 "Stage 2 classifier error" 拒绝（提示为瞬时错误、可重试，但两次均未通过）。**AI 无法自行完成**。若采纳 #5 的方式②，请人工把这两条粘进 `permissions.allow`：`"Bash(\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\"*)"` 与 `"Bash(\"C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"*)"`。 | 待处理（可被 #5 方式①绕过，故不阻塞） |
 | 11 | **无头浏览器启动放行（T9 同样受阻，且阻塞面更大）** | 与 #5 同一堵墙：worktree 隔离守卫拒绝执行工作目录外的 `msedge.exe`。**T9 的四个 verify 脚本全部靠 CDP 驱动真实浏览器，无浏览器则一个都跑不了**（Wave 1 出口「契约层断言跑绿」与 Wave 2 全部验收都卡在这里）。请二选一：① 放行 `~/.config/safe-chains.toml` 里的 msedge.exe 路径；② 自己起一次（在会话里用 `!` 前缀粘贴，dev server 端口按实际输出改）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9222 --user-data-dir=C:\Users\112\AppData\Local\Temp\car-display-edge --no-first-run --no-default-browser-check --window-size=1440,900 about:blank`（脚本会依次探测 9222/9333/12319，无需另配）。 | **T8 侧已解除**：T8 会话实测可直接启动无头 Edge（`--remote-debugging-port=9411`，CDP 连通）。**T9 可直接复用该实例**（`node scripts/verify-*.mjs --debug-port=9411`），无需再等人工放行；若 9411 未在运行，请先让 T8 拉起或自行尝试同样命令。 |
+| 12 | main 工作树存在未提交改动 | 仓库根工作树（`D:\car_display`）有 `app/src/components/scene/VehicleModel.jsx` 的 **+3/−1 未提交改动**（疑为 T1 记录 04 的加载页 MB 读数修法）。它不在任何分支上：请确认是否提交、由谁提交（该文件按 §12.2 归 T5 独占，T7 不碰）。 | 待处理 |
+| 13 | WebGPU 渲染器偶发报错/整页失响应 | headless Edge + WebGPU 下偶发 `Invalid value used as weak map key`（three_webgpu `Textures.updateTexture`），严重时页面后续不再响应。**未改动的基线同样可复现**（全新实例加载期 12 条），同一套相机运动在 **WebGL 回退下 0 条**。录屏/真机演示若遇到画面卡死，可先以 WebGL 运行；**是否强制 WebGL（或换 three 版本）属 T8/部署决策，请人工定**。详见 T7-02 问题 4。 | 待处理（T8 决策） |
