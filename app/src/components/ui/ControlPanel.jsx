@@ -42,7 +42,9 @@ export function ControlPanel({ voiceSlot = null, defaultOpen }) {
   const closeGroup = useCarStore((state) => state.closeGroup);
   const closeAll = useCarStore((state) => state.closeAll);
   const toggleLight = useCarStore((state) => state.toggleLight);
-  const setCameraView = useCarStore((state) => state.setCameraView);
+  // T8 集成期改调 applyCameraView（CHANGELOG 0011/0019）：带自增令牌，
+  // 使「拖走后点复位」这类同值重复下发也能可靠到位。setCameraView 语义未变，仍在契约中。
+  const applyCameraView = useCarStore((state) => state.applyCameraView);
   const orbitOnce = useCarStore((state) => state.orbitOnce);
   const setAutoRotate = useCarStore((state) => state.setAutoRotate);
   const pushToast = useCarStore((state) => state.pushToast);
@@ -88,9 +90,9 @@ export function ControlPanel({ voiceSlot = null, defaultOpen }) {
   const handleCameraView = useCallback((id) => {
     bumpInteraction();
     const label = CAMERA_VIEWS.find((view) => view.id === id)?.label ?? id;
-    setCameraView(id);
+    applyCameraView(id);
     pushToast(STRINGS.toast.cameraView(label));
-  }, [bumpInteraction, setCameraView, pushToast]);
+  }, [bumpInteraction, applyCameraView, pushToast]);
 
   const handleOrbitOnce = useCallback(() => {
     bumpInteraction();

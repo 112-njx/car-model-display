@@ -99,29 +99,20 @@ export function CameraRig({ autoRotateEnabled = true }) {
     animating.current = true;
   }, [view, distanceScale]);
 
-  // 兜底：同一预设的"重复下发"（用户拖走后点「复位」）在 §13.2 里不会改变 cameraView，
-  // 因此上面的 view effect 不会触发，表现为「复位没反应」。zustand 对每次 set 都会通知订阅者，
-  // 这里识别"所有字段引用都没变的空写"（即 setCameraView(当前值)）补做一次预设应用，
-  // 并以 mode/指针/到位三重守卫把误命中面压到最小。
-  // 局限：其他同值空写（如 setPart 写入相同值）也会命中——正解是 §13.2 给预设补一个可重复触发的
-  // 令牌（与 orbitOnce 的 token 同理），已按 §13.4 登记 docs/contracts/CHANGELOG.md 交 T2；
-  // T2 落地后本兜底可整段删除。
+  // 带令牌的预设下发（CHANGELOG 0011 → T8 受理落地 0019）：
+  // `applyCameraView(viewId)` 既写 cameraView 又自增 token，因此**同值重复下发**（用户拖走后点「复位」）
+  // 也能可靠触发一次到位。有了它，T7 原先那段"识别 zustand 空写"的兜底订阅（及其误命中面：
+  // 任何同值空写如 setPart 写相同值都会把相机拉回预设）**已整段删除**——这正是 T7《挂载说明》§6
+  // 所要求的「T2 落地 0010 后整段删除」。
+  // 说明：`setCameraView` 保留原语义（纯赋值，只驱动上面的 view effect），未做任何改动。
   useEffect(() => {
-    const unsubscribe = useCarStore.subscribe((state, prev) => {
-      if (state === prev) return;
-      if (Object.keys(state).some((key) => state[key] !== prev[key])) return; // 有实际变化：不是同值空写
-      if (modeRef.current !== IDLE_MODES.FREE) return; // 自转/环绕期间不抢写
-      if (animating.current) return; // 预设动画进行中
-      if (idleApi.current?.isPointerActive?.()) return; // 用户正在拖拽
-      if (distanceXYZ(camera.position, desiredPosition.current) < IDLE_ROTATE_DEFAULTS.presetSettleEpsilon) return; // 已在位
-      const preset = scaledPreset(PRESETS[state.cameraView] ?? PRESETS.hero, distanceScale);
-      idleApi.current?.notifyInteraction();
-      desiredPosition.current.set(...preset.position);
-      desiredTarget.current.set(...preset.target);
-      animating.current = true;
-    });
-    return unsubscribe;
-  }, [camera, distanceScale]);
+    if (cameraCommand.type !== "view") return;
+    const preset = scaledPreset(PRESETS[cameraCommand.viewId] ?? PRESETS.hero, distanceScale);
+    idleApi.current?.notifyInteraction();
+    desiredPosition.current.set(...preset.position);
+    desiredTarget.current.set(...preset.target);
+    animating.current = true;
+  }, [cameraCommand, distanceScale]);
 
   // §13.3③：把相机审计字段注册进 window.__carDisplayCameraAudit()
   // 注：scene 级 autoRotate 无需在此注册——store.autoRotate 由本组件写入，本身即场景真实值。

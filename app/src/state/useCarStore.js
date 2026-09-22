@@ -91,6 +91,17 @@ export const useCarStore = create((set) => ({
     set({ cameraView: viewId });
   },
   orbitOnce: () => set((state) => ({ cameraCommand: { type: "orbit-once", token: state.cameraCommand.token + 1 } })),
+  // T8 集成期受理（CHANGELOG 0011 / 0019）：带令牌的预设下发。
+  // `setCameraView` 是纯赋值，同一预设重复下发不产生状态变化 → 订阅者不触发 →
+  // 表现为「用户把相机拖走后点『复位』毫无反应」（拖拽不改变 cameraView，故这是高频路径而非边角用例）。
+  // 本 action 与 `orbitOnce` 同构：既写 cameraView（保持既有语义不变），又自增 token 保证可重复触发。
+  applyCameraView: (viewId) => {
+    if (!CAMERA_VIEW_ID_SET.has(viewId)) return warn(`applyCameraView 收到未知视角 id：「${viewId}」`);
+    set((state) => ({
+      cameraView: viewId,
+      cameraCommand: { type: "view", viewId, token: state.cameraCommand.token + 1 },
+    }));
+  },
 
   // ── Toast actions ──
   pushToast: (text, level = "info") =>

@@ -35,7 +35,9 @@ export const VOICE_STORE_ACTIONS = {
   openGroup: (groupId) => carStore.getState().openGroup(groupId),
   closeGroup: (groupId) => carStore.getState().closeGroup(groupId),
   setLight: (id, on) => carStore.getState().setLight(id, on),
-  setCameraView: (viewId) => carStore.getState().setCameraView(viewId),
+  // T8 集成期改调 applyCameraView（CHANGELOG 0011/0019）：与 UI 通道同源，
+  // 否则语音「看侧面」在相机已被拖走时同样会因同值赋值而失效。
+  setCameraView: (viewId) => carStore.getState().applyCameraView(viewId),
   orbitOnce: () => carStore.getState().orbitOnce(),
   bumpInteraction: () => carStore.getState().bumpInteraction(),
 };
