@@ -182,6 +182,52 @@
 
 ---
 
+## Wave 1 · T4 中文中控 UI —— B 段（接线）
+
+### 记录 08 · 2026-09-22 · T4 B 段：ui/** 接新 store、移除配置器组件、index.html 中文化
+
+- **轮次目标**：B 段「接线阶段」——把 A 段的 props 驱动组件全部接到 §13.2 的真实 store，移除 7 个配置器组件，中文化首屏，并做真实 App 的浏览器实测。
+- **前置**：`origin/contract-v1` 已推送（T2 `0387166` + `2bf4679`）。因纪律同时要求「不 force push、不改写历史」而 rebase 后必须 force push，故改用 `git merge --no-ff origin/contract-v1`（合并提交 `8db6f2e`）；`docs/debug.md` 与 T2 的记录段冲突，取 T2 侧版本后重排为「T2 记录 05/06 → T4 记录 07/08」，并把此前「`store-contract.md` 缺失」的过时判断修正为「已由 T2 于 `2bf4679` 补交」。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/components/ui/ControlPanel.jsx` | **改为 store 连接版**：读 `parts`/`lights`/`cameraView`/`autoRotate`，调 8 个 action + `pushToast` + `bumpInteraction`；部件与视角清单改从 `carConfig` 读，不再经 props |
+  | `app/src/components/ui/ToastHost.jsx` | **改为订阅 `store.toast`** + `store.dismissToast`（props 保留为自测覆盖） |
+  | `app/src/components/ui/LoadingScreen.jsx` | **改为读 `store.loading` + drei `useProgress`**，`store.loading` 未落地时自动回退，不报错 |
+  | `app/src/App.jsx` | **最小改动**：删 7 个 import 与挂载，改挂 `ControlPanel`/`ToastHost`/`LoadingScreen`；`skip-link` 文案改中文 |
+  | `app/index.html` | **中文化**：`lang="zh-CN"`、中文 title/description、中文首屏 boot 页（配色对齐新主题）；移除 FormDrive 的 localStorage 跳过脚本与已不用的 `Instrument Serif` 字体请求 |
+  | `ControlDeck.jsx`、`Navigation.jsx`、`HeroCopy.jsx`、`InfoDialog.jsx`、`VehicleSelector.jsx`、`CameraControls.jsx`、`InitialLoadingScreen.jsx` | **删除**（7 个配置器组件） |
+  | `docs/t4-ui-mount-guide.md` | **新增**：给 T8 的《挂载/接入说明》 |
+- **关键决策**：
+  1. **交付形态采用方案 A**（人工裁定）：删除 7 个配置器组件 + 交付一处最小 `App.jsx` 改动。理由：§11.1 要求「移除组件」而 §12.1 禁改 `App.jsx`，删文件会让未改动的 `App.jsx` 编译失败，与 S2 准入「build 全绿」直接冲突；T8 反正要重写 `App.jsx`，冲突面单文件且必然发生。除 import 与挂载点外，`App.jsx` 其余结构逐字保持 T1 基线。
+  2. **Toast 三通道归属划清**：`ControlPanel` 是「UI 通道」的唯一发出点；T5 点击拾取、T6 语音各自发各自的中文反馈，不经 `ControlPanel` 转发——避免同一动作出现两条 Toast。已写入《挂载说明》§3。
+  3. **`LoadingScreen` 对 `store.loading` 做防御式消费**：CHANGELOG 0010 尚未由 T2 落地，组件写成 `loading?.x ?? 兜底`，落地后**无需改 T4 一行代码**即自动显示 `X.X / Y.Y MB`。
+  4. **`index.html` 中文化经人工裁定归 T4**（§12.2 未把该文件划给任何 Wave 1 Agent）。boot 页是用户看到的第一屏，与 `LoadingScreen` 是同一体验的先后两帧，由同一人改才不会「中文加载页接英文 boot 页」。同时移除 FormDrive 的 `formdrive-cached` 跳过逻辑（键名英文残留 + 与新加载页定位冲突）。
+  5. **`skip-link` 文案改中文**：超出「仅摘除悬空 import 与挂载」的字面范围，属 DoD「界面无英文残留」的必要最小项，特此登记。
+- **关键问题与修法**：
+  1. **端口陷阱导致 5 项「假红」**（现象）：B 段首跑时桌面视口整段失败，且英文残留扫描扫出 `FORMDRIVE` / `MADE BY ENES KAYMAZ` / `Configuration` / `Paint` 等**已删除组件**的文案。（根因）`netstat` + `wmic` 查明：**T3 的 dev server 也绑在 5199**（T3 用 `--port 5199 --strictPort` 未加 `--host`，Vite 绑到 IPv6 `[::1]:5199`；我用 `--host 0.0.0.0` 绑到 IPv4），同一端口上并存**两个不同工程**，桌面段那一次请求落到了 T3 的基线 App。（修法）改用唯一端口 **5211** 复跑；并给测试脚本加了「导航前打标记、等标记消失」与「断言 `document.title` 为本分支应用」两道防串味闸门。**教训与 T2 记录 06 同源：dev 自测必须用唯一端口，且必须验证"服务的是我的实例"。**
+  2. **WebGPU 控制台噪声的归因**（现象）：headless 下持续抛 `TypeError: Invalid value used as weak map key`，栈全在 `three_webgpu.js` 的 `Textures.updateTexture`。（定性）做了三段隔离实测：**A 段零交互仅渲染 → 已有 1 条**；B 段只用 `__carDisplayStore` 驱动、完全不碰 T4 的 UI → 232 条；C 段点击 T4 的 UI → 1022 条。数量随动画帧数增长，且 T4 未改动任何场景/渲染器文件。→ 判定为**无头软件 WebGPU 环境问题，非本任务引入**，已写入《挂载说明》§7 供 T8/T9 判读。
+  3. **我自己两处断言缺陷的纠正**（不掩盖）：① 「3D 部件动画进度推进」原断言读 `__carDisplaySceneAudit().parts[].progress`，但该字段在 T5 重写 `VehicleModel` 前是**由 store 派生的 0/1**（T2 CHANGELOG 0006），不是真实动画进度——改为**直接读车窗玻璃网格的世界坐标**（硬证据）；② 「相机实际位移」原采样窗口 1400 ms 太短，headless 软件渲染约 1 fps、阻尼需数帧收敛，实测 t=1000 ms 仍未动、t=2000 ms 到位——采样窗口放宽到 3 s。
+  4. **读图两次误判**（记录备查）：桌面截图中「大灯」开关两次被我读成开启态，两次用探针脚本核实均为 `aria-checked="false"`、滑块距左 5 px、轨道 `oklch(0.94 0.05 200 / 0.05)`（近乎全透明）——是低分辨率读图误差，**非 bug**。结论：低分辨率截图上的开关状态不可靠，一律以 `aria-checked` + 几何量测为准。
+- **自测结果**：
+  - `npm run build`：✅ 5.76 s，index chunk 104.66 → **110.91 kB**；`dist/index.html` 3.13 kB。自带警告（circular chunk / 空 react chunk / >500 kB）均为 FormDrive 原有。
+  - **真实 App 浏览器实测（Edge headless + CDP，dev 5211，脚本在仓库外）**：**44/44 项断言全部通过**：
+    - **375×812**：`lang=zh-CN`、title 中文、boot 页无 `FORMDRIVE` 残留；加载页中文且进度推进（6 → 51）、就绪后退场；无横向溢出；面板默认收起、点击展开；10 个部件按钮齐全；初始 store 全关闭。
+    - **交互 → 真实 store → 3D**：点「左前车窗」→ `store.parts.window_lf=true` + `bumpInteraction` 推进 + Toast「左前车窗已打开」+ **车窗玻璃世界 Y 从 0.5837 降到 0.0873**（3D 部件真的动了，硬证据）；「车窗 全开」→ 4 个窗全开 + 组计数 4/4；大灯 → `store.lights.headlight=true` 且进入场景审计；「侧面」→ `cameraView='profile'`（store 与审计双证）+ **相机世界坐标位移 7.64**（`[6.8,3.1,7.6]` → `[7.9,1.55,0.2]`）；「环绕一周」→ `cameraCommand={type:'orbit-once',token:1}`；待机自转开关 → `autoRotate=true`；Toast 3.2 s 自动消失；「全部关闭」→ 部件与灯光全复位 + 摘要「车辆已全部关闭」。
+    - **1440×900**：面板默认展开、右侧侧栏（l=1016, r=1416）、在视口内、内部滚动生效（1020 > 646）；手势提示可见；语音容器位存在。
+    - **英文残留扫描**：两视口逐文本节点扫描 `[A-Za-z]{2,}`，仅剩专名 `Tesla`/`Model` 与单位 `MB`。
+    - **控制台**：除上述 WebGPU 环境噪声 12 条外，**0 错误**。
+  - **视觉确认（看图）**：`%TEMP%/t4-selftest/b/{375-loading,375-collapsed,375-expanded,375-interacted,1440-desktop}.png`。车模渲染正常（PBR 车身、环形光带、地面反射）；375 交互图中两条中文 Toast、车窗 4/4 青色描边发光、玻璃拟态面板透出车身，中文排版无截断。
+- **commit**：（本条记录随代码一并提交，见分支 `wave1/t4` 顶部提交）
+- **遗留项**：
+  1. **`store.loading` 片待 T2 落地、T5 写入**（CHANGELOG 0010，人工已裁定采纳）。落地前字节行显示「首次载入约 22 MB」。
+  2. **本分支删除了 7 个组件并改了 `App.jsx`**：T8 若在集成分支上另行重写 `App.jsx`，此单文件冲突必然发生且预期，按《挂载说明》§2 处理即可。
+  3. **5199 端口上现存两个 dev server**（本分支 IPv4 实例 + T3 的 IPv6 实例），双方自测都可能打到对方。已登记人工配置区 #10。
+  4. `--paint-*` token 与 legacy `studioConfig.js` 的清理归 T8 集成末段。
+  5. 真机（手机 Chrome/Edge）验收未做，需人工。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -194,6 +240,7 @@
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
 | 5 | 无头浏览器 CDP 自测放行 | T2 需要用本机 Edge（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）以 `--headless=new --remote-debugging-port=9333` 打开 `http://127.0.0.1:5174/` 做渲染层实测（部件动画 / 灯光发光 / 相机位移）。该命令被本会话的 worktree 隔离守卫拦下（它无法判定命令名不是 git）。**AI 无法自行放行**。请二选一：① 在 `~/.config/safe-chains.toml` 放行该路径/命令；② 自己执行一次（把下面命令里的路径原样粘贴到会话里，前缀 `!`）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\t2-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`（需先在 worktree 的 `app/` 里跑着 `npm run dev`，端口以实际输出为准）。 | 待处理（阻塞 T2 渲染层实测） |
 | 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程（PID 24428）监听，T2 的 dev server 自动落到 **5174**。做 dev 自测时务必以自己实例输出的端口为准，否则会打到别人的工程得到假绿（详见记录 06 的端口陷阱）。若后续多 Agent 并行开发，建议各自显式指定端口。 | 待处理（已规避，登记备查） |
-| 7 | **T4 交付形态裁定**：旧配置器组件的删除与 `App.jsx` 禁改冲突 | §11.1 T4 要求"移除 Navigation/HeroCopy/VehicleSelector/ControlDeck/InfoDialog 等配置器组件"，但 §12.1 规定"Wave 1 一律不改 `App.jsx`"，而 `App.jsx` 正 import 着这 7 个组件——**删除文件 = build 失败**，与 S2 准入"build 全绿"直接冲突。三条出路：**(A) T4 删除组件 + 交付一处最小 `App.jsx` 改动**（仅摘除悬空 import 与已删组件挂载，不动其余；T8 反正要重写 `App.jsx`，冲突面单文件且必然发生）——**T4 建议此案**；**(B)** 组件文件保留不删，删除动作并入 T8 的 `App.jsx` 重写步（严格合规，但 T4 的"移除"未落地）；**(C)** 7 个旧文件改为 store 连接的 re-export shim（`App.jsx` 零改动即可渲染新中文 UI，但留下 T8 必须清理的间接层）。**未裁定前 T4 不删任何文件。** | **待人工裁定** |
-| 8 | **`index.html` 归属** | 首屏 boot 加载页（`FORMDRIVE` / `REALTIME AUTOMOTIVE STUDIO` / `Shape takes form.` / `PREPARING INTERFACE`）、`<title>`、`lang="en"`、meta description 全为英文，且 boot 加载页是用户看到的第一屏——DoD「界面无英文残留」无法只靠 `ui/**` 达成。但 §12.2 文件独占矩阵**未把 `index.html` 划给任何 Wave 1 Agent**（"工程配置 / package.json / Vite" 一行的 T4 列为 `–`）。请裁定：`index.html` 归 T4（中文化 boot 页 + `lang="zh-CN"` + 中文 title/description），还是归 T10a/T8。 | **待人工裁定** |
-| 9 | **加载页字节级读数的契约字段缺口**（与 #3 同源） | §11.1 T4 要求"保留字节级加载进度"，但 §13.2 的 state 片未收录 T1 基线的 5 个加载态字段（`renderer` / `initialSceneReady` / `initialAssetProgress` / `initialAssetLoadedBytes` / `initialAssetTotalBytes`），而字节读数由 `useVehicleGLTF(url, trackInitialTransfer)` 的传输回调写入、调用点在 T5 的 `VehicleModel.jsx`。drei `useProgress` 只给条目数不给字节 → 新加载条会退化为 0→100 跳变（T1 记录 04 已实测：百分比正常、仅丢字节）。已登记 `docs/contracts/CHANGELOG.md` **0010**，建议 store **只增** `loading: { sceneReady, progress, loadedBytes, totalBytes }`（T5 写入、T4 消费），请 S1 一并裁定。 | **待人工裁定（S1）** |
+| 7 | **T4 交付形态裁定**：旧配置器组件的删除与 `App.jsx` 禁改冲突 | §11.1 T4 要求"移除 Navigation/HeroCopy/VehicleSelector/ControlDeck/InfoDialog 等配置器组件"，但 §12.1 规定"Wave 1 一律不改 `App.jsx`"，而 `App.jsx` 正 import 着这 7 个组件——**删除文件 = build 失败**，与 S2 准入"build 全绿"直接冲突。三条出路：**(A) T4 删除组件 + 交付一处最小 `App.jsx` 改动**（仅摘除悬空 import 与已删组件挂载，不动其余；T8 反正要重写 `App.jsx`，冲突面单文件且必然发生）——**T4 建议此案**；**(B)** 组件文件保留不删，删除动作并入 T8 的 `App.jsx` 重写步（严格合规，但 T4 的"移除"未落地）；**(C)** 7 个旧文件改为 store 连接的 re-export shim（`App.jsx` 零改动即可渲染新中文 UI，但留下 T8 必须清理的间接层）。**未裁定前 T4 不删任何文件。** | **已解决（人工裁定采用方案 A，见记录 08）** |
+| 8 | **`index.html` 归属** | 首屏 boot 加载页（`FORMDRIVE` / `REALTIME AUTOMOTIVE STUDIO` / `Shape takes form.` / `PREPARING INTERFACE`）、`<title>`、`lang="en"`、meta description 全为英文，且 boot 加载页是用户看到的第一屏——DoD「界面无英文残留」无法只靠 `ui/**` 达成。但 §12.2 文件独占矩阵**未把 `index.html` 划给任何 Wave 1 Agent**（"工程配置 / package.json / Vite" 一行的 T4 列为 `–`）。请裁定：`index.html` 归 T4（中文化 boot 页 + `lang="zh-CN"` + 中文 title/description），还是归 T10a/T8。 | **已解决（人工裁定归 T4，已中文化，见记录 08）** |
+| 9 | **加载页字节级读数的契约字段缺口**（与 #3 同源） | §11.1 T4 要求"保留字节级加载进度"，但 §13.2 的 state 片未收录 T1 基线的 5 个加载态字段（`renderer` / `initialSceneReady` / `initialAssetProgress` / `initialAssetLoadedBytes` / `initialAssetTotalBytes`），而字节读数由 `useVehicleGLTF(url, trackInitialTransfer)` 的传输回调写入、调用点在 T5 的 `VehicleModel.jsx`。drei `useProgress` 只给条目数不给字节 → 新加载条会退化为 0→100 跳变（T1 记录 04 已实测：百分比正常、仅丢字节）。已登记 `docs/contracts/CHANGELOG.md` **0010**，建议 store **只增** `loading: { sceneReady, progress, loadedBytes, totalBytes }`（T5 写入、T4 消费），请 S1 一并裁定。 | **已裁定采纳（人工，2026-09-22）；待 T2 受理推送 `contract-v1` + T5 在 `VehicleModel.jsx` 写入** |
+| 10 | **5199 端口上并存两个 dev server** | 实测 `netstat` + `wmic` 查明：`[::1]:5199`（IPv6）是 **T3 的实例**（`wave1-t3`，绑基线 App），`0.0.0.0:5199`（IPv4）是 **T4 的实例**（`wave1-t4`）。同一端口两个不同工程 → 双方自测都可能打到对方（T4 已因此产生 5 项「假红」，见记录 08 问题 1）。**AI 无法自行清理**：T4 的旧实例（PID 20096）随会话后台任务残留，`taskkill` 被本会话权限拒绝。请人工执行 `taskkill /PID 20096 /F` 释放，并**要求各 Agent 使用唯一端口**（T4 已改用 5211）。 | **待处理（需人工）** |
