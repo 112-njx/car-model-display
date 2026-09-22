@@ -72,8 +72,33 @@ export function injectVoiceRecognition(ctor) {
   return support;
 }
 
+/**
+ * §13.3 ④ 增补（T8 集成期受理，见 docs/contracts/CHANGELOG.md 0018）：
+ * **程序化「开始 / 停止识别」驱动入口**。
+ *
+ * 动机（T9 登记）：§13.3④ 只冻结了「替换构造函数」，没冻结「让识别进入 listening」的入口；
+ * 而 mock 的 `say()` 只能投递给已 `start()` 的实例，`createRecognizer()` 又是模块内部导出、
+ * 未挂 `window` —— T9 的 `verify-voice` 在无麦克风的 headless 环境里无法驱动会话，
+ * 只能退化为点 UI（脆且受样式影响）。
+ *
+ * 语义：对**当前所有已挂载**的控制器批量下发（正常只有 1 个），返回受影响的控制器数。
+ * 未挂载任何语音组件时返回 0（不抛错，便于脚本判空）。
+ */
+function forEachLiveController(action) {
+  let count = 0;
+  for (const controller of liveControllers) {
+    action(controller);
+    count += 1;
+  }
+  return count;
+}
+
 if (typeof window !== "undefined") {
   window.__carDisplayVoiceInject = injectVoiceRecognition;
+  window.__carDisplayVoiceStart = () => forEachLiveController((c) => c.start());
+  window.__carDisplayVoiceStop = () => forEachLiveController((c) => c.stop());
+  window.__carDisplayVoiceToggle = () => forEachLiveController((c) => c.toggle());
+  window.__carDisplayVoiceControllerCount = () => liveControllers.size;
   // 初始化 store.voice.supported，让 UI 在语音组件挂载前就知道能力探测结果
   carStore.getState().setVoiceSupported(detectSupport().supported);
 }

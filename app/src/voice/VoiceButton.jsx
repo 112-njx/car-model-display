@@ -75,6 +75,7 @@ export function VoiceButton({
         <button
           type="button"
           className="cd-voice-btn"
+          data-testid="cd-voice-toggle"
           onClick={onToggle}
           disabled={disabled}
           aria-pressed={listening}
