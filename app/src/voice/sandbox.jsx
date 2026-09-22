@@ -4,29 +4,26 @@
  * 契约无关：本页**不 import 主应用的 store / App / 场景**，只用自己的「假车状态」承接 executePlan，
  * 因此可在 T2 的 carConfig / useCarStore 落地之前独立自测整条链路。
  *
+ * 状态机复用 `voiceController.js` —— 与 B 段主应用是**同一份实现**，
+ * 因此这里跑过的断言覆盖的就是最终发布的代码，而不是一份平行的仿制品。
+ *
  * 自测能力：
  *   1. 能力探测结果（supported / secure / injected / 中文降级文案）
  *   2. 真实麦克风链路（需 https 或 localhost 的 Chrome / Edge）
- *   3. mock 注入链路：用 setRecognitionCtor 注入回放 mock（等价于 §13.3 ④ 的注入点）
+ *   3. mock 注入链路：注入回放 mock（等价于 §13.3 ④ 的 window.__carDisplayVoiceInject）
  *   4. 降级路径：强制「不支持」「非安全上下文」
  *   5. 手动输入指令（headless 环境无麦克风时的主要自测手段）
- *   6. 80 条 parseCommand 用例一键跑
+ *   6. parseCommand 全量用例一键跑
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DEFAULT_VOCABULARY, describeActions, executePlan } from "./commands.js";
-import { parseAlternatives, parseCommandDetailed } from "./parseCommand.js";
+import { DEFAULT_VOCABULARY, describeActions } from "./commands.js";
+import { parseCommandDetailed } from "./parseCommand.js";
 import { runCommandCases } from "./commandCases.js";
-import {
-  VoiceRecognizer,
-  detectSupport,
-  queryMicrophonePermission,
-  requestMicrophonePermission,
-  setRecognitionCtor,
-  setSupportOverrideForTest,
-} from "./recognition.js";
-import { isSpeechSynthesisSupported, speak, cancelSpeech } from "./synthesis.js";
+import { detectSupport, queryMicrophonePermission, setSupportOverrideForTest } from "./recognition.js";
+import { createSnapshot, createVoiceController } from "./voiceController.js";
+import { cancelSpeech, isSpeechSynthesisSupported, speak } from "./synthesis.js";
 import { VoiceButton } from "./VoiceButton.jsx";
 
 const VOCAB = DEFAULT_VOCABULARY;
@@ -120,34 +117,16 @@ function createFakeCarState() {
 }
 
 function Sandbox() {
-  const [support, setSupport] = useState(() => detectSupport());
-  const [permission, setPermission] = useState("unknown");
-  const [status, setStatus] = useState(() => (detectSupport().supported ? "idle" : "unsupported"));
-  const [transcript, setTranscript] = useState("");
-  const [reply, setReply] = useState("");
-  const [hint, setHint] = useState("");
-  const [error, setError] = useState("");
-  const [injected, setInjected] = useState(false);
-  const [speechEnabled, setSpeechEnabled] = useState(false);
-  const [manual, setManual] = useState("打开左前车窗");
+  const [snap, setSnap] = useState(createSnapshot);
   const [car, setCar] = useState(createFakeCarState);
   const [logs, setLogs] = useState([]);
+  const [manual, setManual] = useState("打开左前车窗");
 
-  const recognizerRef = useRef(null);
+  const controllerRef = useRef(null);
 
   const log = useCallback((text) => {
     const stamp = new Date().toLocaleTimeString("zh-CN", { hour12: false });
     setLogs((prev) => [`[${stamp}] ${text}`, ...prev].slice(0, 120));
-  }, []);
-
-  const refreshSupport = useCallback(() => {
-    const next = detectSupport();
-    setSupport(next);
-    setStatus((current) => {
-      if (!next.supported) return "unsupported";
-      return current === "unsupported" ? "idle" : current;
-    });
-    return next;
   }, []);
 
   // ── 假 store 的 action（名字与 §13.2 一致，便于 B 段原样替换为真实 store）──
@@ -174,123 +153,47 @@ function Sandbox() {
     [],
   );
 
-  // ── 一条识别结果 → 解析 → 执行 → 回执 ──
-  const handleAlternatives = useCallback(
-    (alternatives, source) => {
-      const detailed = parseAlternatives(alternatives, { vocabulary: VOCAB });
-      setTranscript(detailed.text || (alternatives && alternatives[0]) || "");
-      if (!detailed.actions.length) {
-        setReply("");
-        setHint(detailed.hint || "");
-        log(`${source} 未执行（${detailed.reason}）：${detailed.hint}`);
-        return;
-      }
-      setHint("");
-      executePlan(detailed.actions, api);
-      const text = describeActions(detailed.actions, { vocabulary: VOCAB });
-      setReply(text);
-      log(`${source} 执行：${text}（${detailed.actions.length} 个动作）`);
-      if (speechEnabled) speak(text);
-    },
-    [api, log, speechEnabled],
-  );
-
-  // ── 识别器（真实或注入的 mock 都走同一条链路）──
-  const getRecognizer = useCallback(() => {
-    if (recognizerRef.current) return recognizerRef.current;
-    const recognizer = new VoiceRecognizer({ restartDelayMs: 400 });
-    recognizer.on("status", ({ state }) => {
-      if (state === "starting") setStatus("requesting");
-      else setStatus(state);
-      log(`状态 → ${state}`);
+  useEffect(() => {
+    const controller = createVoiceController({
+      api,
+      vocabulary: VOCAB,
+      onChange: setSnap,
+      onLog: log,
+      speak,
     });
-    recognizer.on("interim", ({ transcript: text }) => setTranscript(text));
-    recognizer.on("result", ({ alternatives }) => {
-      handleAlternatives(alternatives, "识别");
-      // 连续聆听：处理完立刻回到聆听态
-      setTimeout(() => setStatus((current) => (current === "processing" ? "listening" : current)), 0);
-    });
-    recognizer.on("error", ({ message, fatal, permission: isPermission }) => {
-      setError(message);
-      log(`错误：${message}`);
-      if (isPermission) setPermission("denied");
-      if (fatal) setStatus("error");
-    });
-    recognizer.on("end", ({ reason }) => log(`会话结束：${reason}`));
-    recognizerRef.current = recognizer;
-    return recognizer;
-  }, [handleAlternatives, log]);
+    controllerRef.current = controller;
+    controller.refreshSupport();
+    controller.refreshPermission();
+    return () => {
+      controller.destroy();
+      controllerRef.current = null;
+      cancelSpeech();
+    };
+  }, [api, log]);
 
-  const handleToggle = useCallback(async () => {
-    const recognizer = getRecognizer();
-    if (recognizer.state === "listening" || recognizer.state === "processing" || recognizer.wantListening) {
-      recognizer.stop();
-      setStatus("idle");
-      setTranscript("");
-      log("用户停止聆听");
-      return;
-    }
-    setError("");
-    setHint("");
-    setStatus("requesting");
-    const result = await requestMicrophonePermission();
-    setPermission(result.state);
-    if (!result.ok) {
-      setStatus("error");
-      setError(result.message || "麦克风不可用。");
-      log(`权限请求失败：${result.state}`);
-      return;
-    }
-    if (!recognizer.start()) {
-      setStatus("error");
-      log("识别器启动失败（能力探测未通过）");
-      return;
-    }
-    log("开始聆听");
-  }, [getRecognizer, log]);
-
-  const handleManual = useCallback(() => {
-    const text = manual.trim();
-    if (!text) return;
-    handleAlternatives([text], "手动输入");
-  }, [handleAlternatives, manual]);
+  const controller = () => controllerRef.current;
 
   const handleInject = useCallback(() => {
-    setRecognitionCtor(createReplayMockClass(log));
-    setInjected(true);
-    refreshSupport();
-    log("已注入回放 mock（等价 __carDisplayVoiceInject(ctor)），voice.supported 应为 true");
-  }, [log, refreshSupport]);
+    controller()?.injectRecognition(createReplayMockClass(log));
+  }, [log]);
 
   const handleRestore = useCallback(() => {
-    setRecognitionCtor(null);
-    setInjected(false);
-    recognizerRef.current = null;
-    refreshSupport();
-    setStatus(detectSupport().supported ? "idle" : "unsupported");
-    log("已恢复真实 SpeechRecognition");
-  }, [log, refreshSupport]);
+    controller()?.injectRecognition(null);
+  }, []);
 
   const handleOverride = useCallback(
     (code) => {
       setSupportOverrideForTest(code);
-      setStatus("unsupported");
-      recognizerRef.current = null;
-      refreshSupport();
-      log(`强制降级：${code || "关闭"}`);
+      const next = controller()?.refreshSupport() || detectSupport();
+      log(`强制降级：${code || "关闭"}（supported=${next.supported}）`);
     },
-    [log, refreshSupport],
+    [log],
   );
 
-  useEffect(() => {
-    const timer = setTimeout(refreshSupport, 0);
-    queryMicrophonePermission().then(({ state }) => setPermission(state));
-    return () => {
-      clearTimeout(timer);
-      cancelSpeech();
-      if (recognizerRef.current) recognizerRef.current.destroy();
-    };
-  }, [refreshSupport]);
+  const handleManual = useCallback(() => {
+    const text = manual.trim();
+    if (text) controller()?.handleAlternatives([text], "手动输入");
+  }, [manual]);
 
   const caseReport = useMemo(() => runCommandCases({ vocabulary: VOCAB }), []);
   const groups = useMemo(() => {
@@ -309,10 +212,10 @@ function Sandbox() {
   return (
     <div>
       <div className="toolbar">
-        <button type="button" className="tool" aria-pressed={injected} onClick={handleInject}>
+        <button type="button" className="tool" aria-pressed={snap.injected} onClick={handleInject}>
           注入回放 mock
         </button>
-        <button type="button" className="tool" aria-pressed={!injected} onClick={handleRestore}>
+        <button type="button" className="tool" aria-pressed={!snap.injected} onClick={handleRestore}>
           恢复真实识别
         </button>
         <button type="button" className="tool" onClick={() => handleOverride("unsupported")}>
@@ -334,21 +237,21 @@ function Sandbox() {
           <h2>① 能力探测</h2>
           <dl className="kv">
             <dt>supported</dt>
-            <dd className={support.supported ? "ok" : "bad"}>{String(support.supported)}</dd>
+            <dd className={snap.supported ? "ok" : "bad"}>{String(snap.supported)}</dd>
             <dt>secure</dt>
-            <dd className={support.secure ? "ok" : "warn"}>{String(support.secure)}</dd>
+            <dd className={snap.secure ? "ok" : "warn"}>{String(snap.secure)}</dd>
             <dt>injected</dt>
-            <dd className={support.injected ? "ok" : ""}>{String(support.injected)}</dd>
+            <dd className={snap.injected ? "ok" : ""}>{String(snap.injected)}</dd>
             <dt>code</dt>
-            <dd>{support.code}</dd>
+            <dd>{snap.injected ? "injected" : snap.supported ? "ok" : snap.secure ? "unsupported" : "insecure-context"}</dd>
             <dt>麦克风权限</dt>
-            <dd>{permission}</dd>
+            <dd>{snap.permission}</dd>
             <dt>语音播报</dt>
             <dd>{String(isSpeechSynthesisSupported())}</dd>
-            {support.message ? (
+            {snap.message ? (
               <>
                 <dt>降级提示</dt>
-                <dd className="warn">{support.message}</dd>
+                <dd className="warn">{snap.message}</dd>
               </>
             ) : null}
           </dl>
@@ -357,26 +260,25 @@ function Sandbox() {
         <section className="card">
           <h2>② 语音控车（VoiceButton）</h2>
           <VoiceButton
-            status={status}
-            supported={support.supported}
-            transcript={transcript}
-            reply={reply}
-            hint={hint}
-            message={support.message}
-            error={error}
-            onToggle={handleToggle}
-            onRetry={handleToggle}
-            speechEnabled={speechEnabled}
+            status={snap.status}
+            supported={snap.supported}
+            transcript={snap.transcript}
+            reply={snap.reply}
+            hint={snap.hint}
+            message={snap.message}
+            error={snap.error}
+            onToggle={() => controller()?.toggle()}
+            onRetry={() => controller()?.start()}
+            speechEnabled={snap.speechEnabled}
             onToggleSpeech={() => {
-              setSpeechEnabled((value) => {
-                if (value) cancelSpeech();
-                return !value;
-              });
+              const next = !snap.speechEnabled;
+              if (!next) cancelSpeech();
+              controller()?.setSpeechEnabled(next);
             }}
             speechSupported={isSpeechSynthesisSupported()}
           />
           <p className="sub" style={{ marginTop: 12, marginBottom: 0 }}>
-            状态：<strong>{status}</strong>
+            状态：<strong>{snap.status}</strong>
           </p>
         </section>
 

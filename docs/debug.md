@@ -187,6 +187,26 @@
   2. 记录 03 的遗留项 2、3（真机麦克风、沙盒页假 store 与真 store 两套 api）仍然有效。
   3. 仍未做的：B 段接线（`useVoiceControl.js` + `window.__carDisplayVoiceInject`），等 `contract-v1` 推送。若超过 1 天未推送，按 §12.4 预案上报人工介入。
 
+### 记录 05 · 2026-09-22 11:05 · A 段补强：抽出 store 无关的状态机控制器（为 B 段去重）
+
+- **轮次目标**：`contract-v1` 仍未推送（`git ls-remote` 为空）。按任务书「不要空转」，做一件对 B 段有实质价值的事：把沙盒里那套「识别 → 解析 → 执行 → 状态/回执」逻辑抽成**框架无关、store 无关**的控制器，让沙盒与主应用共用同一份实现。
+- **改动文件**：新增 `app/src/voice/voiceController.js`；`app/src/voice/sandbox.jsx` 改为使用控制器（删掉页面内自建的状态机，约 −60 行重复逻辑）。
+- **关键决策**：
+  1. **为什么要抽**：原计划 B 段的 `useVoiceControl.js` 会把沙盒里那套识别器事件接线**再写一遍**（订阅 status/interim/result/error/end、权限请求、执行计划、回执、播报）。两份实现意味着沙盒里跑过的 35 项断言**并不覆盖** B 段真正发布的代码——这正是「自测通过但集成后出问题」的典型来源。抽成控制器后，沙盒与主应用各自只做一层薄适配（沙盒接假 store、应用接真 store），断言覆盖的就是同一份代码。
+  2. **控制器的依赖面只有 §13.2 冻结的 action 名**（`setPart/openGroup/closeGroup/setLight/setCameraView/orbitOnce/bumpInteraction`），因此**现在就能写、现在就能测**，不必等 T2 的代码——这正是 §12.1「消费方需要的是字段名与 action 签名」的落地。
+  3. **对外只发一个 `onChange(snapshot)`**：快照就是 `VoiceButton` 的 props 来源，React 侧只需 `setSnap`；`status` 映射到 §13.2 的 `voice.status` 枚举（`idle/requesting/listening/processing/error/unsupported`），B 段可直接写进 store。
+  4. **`injectRecognition(ctor|null)` 收敛进控制器**：注入 → 重建能力探测 → 快照的 `supported/injected` 立即更新。B 段只需把它挂到 `window.__carDisplayVoiceInject` 上，并同步 `store.voice.supported`。
+  5. **保留沙盒的 DOM 结构不变**：原有 35 项 CDP 断言**未作任何修改**直接复验，用来证明「换实现不换行为」。
+- **自测结果**：
+  - **headless Edge + CDP：35 项断言全部通过（断言零改动）** —— 覆盖能力探测、手动输入全链路、负例不误动作、mock 注入回放、两条降级路径、无 console error。
+  - `node app/src/voice/commandCases.js`：108/108（本轮未动用例，回归确认）。
+  - **沙盒页纳入构建输入的打包验证：✅ 20.94s 通过**（`voiceController.js` 一并编译进 `voiceSandbox` chunk）。
+  - `npm run build`：本轮未改构建相关文件，状态沿用记录 03 的 ✅（B 段接线前会再跑一次）。
+- **commit**：（见下一条提交）
+- **遗留项**：
+  1. B 段只剩两件事：① 用真实 store 的 action 替换沙盒的假 api（薄适配）；② 挂 `window.__carDisplayVoiceInject` + 同步 `store.voice`。控制器已就绪并已验证。
+  2. 仍等 `contract-v1`。若超过 1 天未推送，按 §12.4 预案上报人工介入（记录 04 已记）。
+
 ---
 
 ## 需要项目人工配置的地方
