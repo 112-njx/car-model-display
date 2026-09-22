@@ -997,6 +997,90 @@
 
 ---
 
+### 记录 T8-04 · 2026-09-22 · 主题收口 / 移动端打磨 / 删 shim / 受理 0011 与移动端点按缺陷
+
+- **轮次目标**：§12.4 第 5、6 步 + 移动端打磨；受理 CHANGELOG 0011（人工点名）；修移动端实测暴露的缺陷。
+- **改动文件**：
+  | 文件 | 改动 |
+  | --- | --- |
+  | `app/src/state/useStudioStore.js`、`app/src/config/studioConfig.js` | **删除**（§12.4 第 5 步；全仓零代码引用，已逐文件 grep 确认） |
+  | `app/src/components/scene/ground/envTheme.js` | 主题收口：`ENV_COLORS` 全部改为按 T4 `tokens.css` 色相收口的值，**逐键标注来源 token + oklch 原值** |
+  | `app/tokens.css` | 增补 T6 `--cd-voice-*` 变量覆盖（T6《挂载说明》§2 约定的收口方式：在 token 层覆盖，不改模块 css） |
+  | `app/src/components/scene/CameraRig.jsx` | ① 新增 `responsiveCameraScale()` 竖屏机位/fov 补偿；② 新增带令牌的预设下发 effect，**删除 T7 的"空写兜底订阅"** |
+  | `app/src/state/useCarStore.js` | 新增 action `applyCameraView(viewId)`（只增，CHANGELOG 0019） |
+  | `app/src/components/ui/ControlPanel.jsx`、`app/src/voice/useVoiceControl.js` | 视角下发改调 `applyCameraView`（UI 与语音两条通道同源） |
+  | `app/src/interaction/usePartPick.js` | **缺陷修复**：移除与契约冲突的"相机被带动"硬否决（见问题 3） |
+  | `app/src/components/scene/ground/useVehicleRoot.js`、`HeadlightRig.jsx`、`VehicleModel.jsx` | 注释更新（指向已删除的 legacy 文件） |
+- **关键决策 / 问题**：
+
+  1. **主题收口为什么落地为 hex 而不是直接引用 CSS 变量**：three.js 的 `Color.setStyle` 只认
+     rgb/hsl/hex/具名色，**不认 `oklch()`**（已核对 `node_modules/three/build/three.core.js`：全文 0 处 oklch）。
+     故把 token 的 oklch 值离线转换（oklch→oklab→linear sRGB→sRGB）后以 hex 落地，每个键都标注了
+     "取自哪个 token 的色相 + 场景需要的明度/彩度"。**收口后的口径是"界面里的青蓝与场景里的青蓝同源"**，
+     不再出现 UI 一种青、车模环境另一种蓝。冷底色相统一到 `--color-paper` 的 **252**，
+     强调色相统一到 `--color-accent` 的 **195**（`--color-focus` 200 / `--color-rule` 205 / `--color-accent-2` 232 同族）。
+
+  2. **移动端竖屏车模被裁（视觉确认发现）**：
+     - **现象**：390×844 下车头车尾出画，车模只露出中段。
+     - **根因**：three 的 `fov` 是**垂直**视角，竖屏时水平视角按宽高比等比收窄——390×844 下 hFov 仅 **17.1°**，
+       hero 机位（距注视点 10.46）可视宽度约 **3.15 m**，而车长 **4.7 m**。§13.1 的预设机位是按桌面横屏标定的。
+     - **修法**：`responsiveCameraScale(aspect)` —— **只放不缩**，`aspect >= 1` 时两系数恒为 1
+       （⇒ **桌面行为与 T7 自测时逐字一致**）；竖屏时距离 ×`clamp(1/aspect,1,1.8)`、fov ×`clamp(sqrt(1/aspect),1,1.35)`，
+       并把 `min/maxDistance` 同步乘系数（否则外推后的机位会被 OrbitControls 夹住）。
+     - **实测**：移动端四预设距离精确等于桌面值 ×1.8（hero 18.825 = 10.458×1.8，front 15.956，profile 13.408，detail 6.892）；
+       环绕一周回正误差 **0**；拖拽位移 18.731 = 桌面 9.83×1.8（比例正确）。桌面侧 dragDelta **9.83**、四预设与 T1 基线一致。
+
+  3. **触摸点按被吞（P0，真机不可用）—— 本记录最重要的缺陷**：
+     - **现象**：390×844 + `Input.dispatchTouchEvent` 实测，**带任何位移的点按都不触发**（2px 即失败）；
+       0px 位移则任何时长都通过。
+     - **取证过程（两次自测缺陷要先排除）**：① 第一版用合成 `TouchEvent`，R3F 走 PointerEvent，测法无效；
+       ② 第二版用 CDP 真实触摸，但把 CDP 往返延迟算进了"时长"，得到"1px 就失败"的假结论。
+       最终改为**页内埋点测真实位移与时长**，并在判别点加临时探针输出 veto 原因，才拿到真数据：
+       ```
+       同样 2px 位移：127ms → camDelta 0.109（通过）
+                     186ms → camDelta 0.1495（被否决）
+                     265ms → camDelta 0.19（被否决）
+       ```
+     - **根因**：`usePartPick` 的点按判据除了契约的位移/时长阈值外，还有一条**「手势期间相机是否被带动」的硬否决**。
+       而 OrbitControls 开了 `enableDamping`，rotate 输入是**逐帧渐进**的——**手指停下后相机仍在继续转**，
+       所以相机位移是**手势时长的函数**。该否决因此退化成"**约 150ms 以上一律不算点按**"，
+       比契约的 300ms 更严，且把 `tapMaxMovePx`/`tapMaxDurationMs` 变成死代码。
+       真机上手指自然按 200~400ms，于是「点击车模控车」在手机上**完全不可用**。
+     - **修法**：点按判据回到契约 —— 只保留 `isTapGesture`（6px/300ms）与"第二根手指落下作废"标记。
+       真实拖拽仍由位移阈值拦住（有意拖拽必然 > 6px）。`cameraMoved` 的采集代码保留作 DEV 诊断信号。
+       **注**：中途曾把 `CAMERA_DRAG_EPSILON` 由 0.01 调到 0.12 试探，最终判定该否决本身才是问题，
+       已把常量**还原为 T5 原值 0.01**，使 T5 文件里的实质改动只有"移除否决"一处。
+     - **修后实测（页内真实位移/时长）**：0px/104ms ✅、2px/205ms ✅、4px/282ms ✅、**6px/214ms ✅（阈值边界）**、
+       9px/215ms ❌、20px ❌、40px ❌、3px/482ms ❌（超 300ms）、2px/773ms ❌。
+       **与契约 §13.1 逐条吻合**。桌面鼠标通道回归：三通道联调 3D 点击仍 PASS，纯逻辑自测 22/22 通过。
+
+  4. **受理 CHANGELOG 0011（人工点名，T9 的 P1）**：落地 `applyCameraView(viewId)` = 同时写 `cameraView`
+     与 `cameraCommand:{type:'view', viewId, token+1}`，**与 `orbitOnce` 同构**；`setCameraView` 的纯赋值语义一字未改。
+     UI（`ControlPanel`）与语音（`VOICE_STORE_ACTIONS`）两条通道都改调它。
+     **随之删除 T7 为绕过该缺口而加的"识别 zustand 空写"兜底订阅**——它有已知误命中面
+     （任何同值空写如 `setPart` 写相同值都会把相机拉回预设），正是 T7《挂载说明》§6 要求"落地后整段删除"的那段。
+     **实测**：连续 3 轮「拖走（位移 11.06）→ 点复位」全部**精确到位（偏差 0）**，修复前第 2 轮起会静默失效。
+
+  5. **删 shim 与 legacy `studioConfig`（§12.4 第 5 步）**：先逐文件 grep 确认零代码引用再删；
+     删后 `npm run build` 653 modules 全绿，浏览器功能回归全绿（10 部件 / 12 命中目标 / 字节读数 22671680 字节 / 界面全中文）。
+     附带发现：T3 的 `ground/useVehicleRoot.js` **信号 1（`__formdriveModelScene`）已被 T5 删除**，
+     倒影实际靠信号 2（mesh 最多的子树）生效——已在注释中标注，**未改 T3 的模块**。
+
+- **自测结果**：
+  - `npm run build`：✅ 653 modules（每步均绿）。
+  - 纯逻辑用例：`pick.selftest.mjs` 22/22、`commandCases.js` 108/108、`perf/selfTest.mjs` 66/66、`perf/contractCheck.mjs` 29/29。
+  - 浏览器（dev `http://127.0.0.1:5191/`，Edge 153 headless + 真实 Intel GPU）：三通道联调 ① 同一 store PASS；
+    §6 指令集回放 12/12；四预设/环绕/拖拽桌面与移动端双端实测；触摸点按阈值逐条对齐契约。
+  - **视觉确认（真图）**：`.t8tmp/shot-full.png`（桌面整屏）、`.t8tmp/shot-mobile2.png`（竖屏整屏，车模完整入画）。
+- **commit**：`62c0003`（删 shim）、`8a4f6f4`（主题收口）、`47da431`（移动端机位）、`c00958a`（applyCameraView）、`d946f9d`（触摸点按修复）
+- **遗留项**：
+  1. **T10a 尚未代做**（人工已裁定由 T8 代做）：`vite.config.js` 的 `base:'./'` + `voice.sandbox.html` 构建输入、
+     `vercel.json`、GitHub Pages workflow、`readme.md`/`docs/release-notes.md` 骨架、`THIRD-PARTY.md`。
+  2. 待人工裁定：WebGPU vs WebGL 策略、Toast 文案跨通道不一致、弱机降档关掉反射地面、桌面 ≥55fps 需另一台机器复核。
+  3. T9 脚本侧问题（`verify-pick`/`verify-camera` 过早探测导致误 SKIP、`verify-parts` 采样竞态与同值断言缺陷）——见人工配置区 #26。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -1031,3 +1115,6 @@
 | 26 | **`verify-pick` / `verify-camera` 误报 SKIP，`verify-parts` 有采样竞态** | 与实测不符：`verify-pick` 报「T5 未集成：hitTargets 为空」（实测 `hitTargets` 12 条、CDP 点击可开合），`verify-camera` 报「cameraAudit.position 为 null」（实测六字段齐全）；疑为**集成信号探测早于 22.7MiB GLB 加载完成**。`verify-parts` 4 条残余 FAIL 为采样竞态（其自身日志出现 `Cannot read properties of undefined (reading 'open')`），另有一条 `未知 id 不改变 audit 终态 — cameraView "hero" → "hero"` 属前后值相同仍判 FAIL 的断言缺陷。**均属 T9 脚本侧，T8 不代改**，证据见记录 T8-03。 | 待处理（交 T9） |
 | 27 | **WebGPU 路径稳定性（人工指定「先实测再定」）** | 实测取证：同一套 `verify-parts` 78 项，**WebGPU 68 PASS / 10 FAIL（12 条未捕获异常）**，**WebGL 74 PASS / 4 FAIL（0 条异常）**；异常栈落在 `three_webgpu` 的 `Textures.updateTexture`，T7 另记录过它"打死 R3F 帧循环导致整页失响应"。**结论待人工拍板**：① 强制 WebGL（稳定优先）；② 保留 WebGPU 优先（性能上限优先）；③ 按能力/UA 只在部分设备降级。 | 待处理（需人工裁定） |
 | 28 | **端口陷阱升级版：`--strictPort` 挡不住双绑定** | `5180` 上同时存在 `0.0.0.0:5180`（我的）与 `127.0.0.1:5180`（另一并行会话的旧实例）；Windows 允许共存，loopback **优先命中更具体的 `127.0.0.1`**，导致自测全打到别人实例（拿到旧 UI）。**修法**：用人工指定的独占端口 `5191`；验身口径改为**按内容**（`curl /src/App.jsx \| grep -c 'PerfProvider\|VoiceControl'` 或核对 `<html lang="zh-CN">`），不能只看 HTTP 200 / content-type。基于 5180 的旧自检结论已全部作废并用 5191 重做。 | 已规避（登记备查） |
+| 29 | **移动端「点击车模控车」曾被完全吞掉（已修）** | `usePartPick` 除契约阈值外还有一条「手势期间相机是否被带动」的硬否决；OrbitControls 的 `enableDamping` 使相机位移成为**手势时长的函数**（实测同样 2px：127ms→0.109、265ms→0.19），该否决退化成"约 150ms 以上一律不算点按"，真机上不可用。已移除该否决，点按判据回到契约的 6px/300ms。**真机复核仍建议保留**：手机 Chrome 上手指按压时长分布与 headless 触摸模拟不完全一致。 | 已修（建议真机复核） |
+| 30 | **竖屏车模曾被裁切（已修）** | three 的 `fov` 是垂直视角，390×844 下水平视角仅 17.1°、可视宽 3.15m < 车长 4.7m。已加 `responsiveCameraScale()` 做"只放不缩"的视口补偿（横屏系数恒为 1，桌面行为不变）。**真机复核**：请确认手机上四预设与拖拽手感可接受（距离 ×1.8 后旋转灵敏度同比下降，属预期）。 | 已修（建议真机复核） |
+| 31 | **T3 的 `useVehicleRoot` 信号 1 已失效** | 信号 1 读 `globalThis.__formdriveModelScene`，而 T5 重写 `VehicleModel` 时删掉了这个 legacy 调试全局；倒影实际靠信号 2（mesh 最多的子树）生效（已实测确认倒影正常）。已在注释中标注，**未改 T3 模块**。若要彻底清理，可由 T3 侧删掉信号 1 分支。 | 待处理（低优先，不影响功能） |
