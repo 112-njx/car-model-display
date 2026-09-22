@@ -3,9 +3,6 @@
 用 **Vibe Coding** 方式实现的新能源汽车中控大屏风格 3D 车模展示与交互 Demo。
 手机与电脑**网页直接打开**，零安装。
 
-> 本文件是交付物骨架（roadmap §7 中间产物，T10a 产出）。
-> 演示话术与最终定稿在 **T10c** 补齐，标记为 ⟨待填⟩ 的段落是留给它的占位。
-
 ---
 
 ## 原始需求（项目 brief）
@@ -78,6 +75,7 @@ car_display/
 │   ├── prompt.md                 # Prompt 与决策留痕
 │   ├── debug.md                  # 每一轮编码的过程记录
 │   ├── contracts/                # 契约文档与变更记录（只增不改）
+│   ├── screenshots/              # 演示截图（readme / Release 用）
 │   └── qa-checklist.md / qa-report.md  # 双端验收清单与报告
 ├── scripts/                      # 自动化验证脚本（verify-*.mjs）
 └── THIRD-PARTY.md                # 第三方许可归属
@@ -104,9 +102,17 @@ car_display/
 4. **性能目标待真机复核**：桌面 ≥55fps / 手机 ≥30fps 需在正常桌面机与真机上复核。
 5. **`file://` 打开 dist 不可用**（见「部署」）。
 
-## 演示话术 ⟨T10c 定稿⟩
+## 演示截图
 
-⟨待填：开场 → 拖动旋转 → 点击控车 → 语音控车 → 场景与自转 → 收尾；建议 2~3 分钟⟩
+<div align="center">
+  <img src="https://github.com/112-njx/car-model-display/raw/main/docs/screenshots/demo-desktop.png" alt="桌面端" width="720" />
+  <br />
+  <sub>桌面端 · 3D 车模与右侧车辆控制面板</sub>
+  <br /><br />
+  <img src="https://github.com/112-njx/car-model-display/raw/main/docs/screenshots/demo-mobile.jpg" alt="手机端" width="280" />
+  <br />
+  <sub>手机端 · 竖屏自适应布局</sub>
+</div>
 
 ## 许可
 
@@ -115,7 +121,3 @@ car_display/
 - 车模 **Tesla 2018 Model 3**（Ameer Studio / Sketchfab）：**CC BY 4.0**（`app/public/models/TESLA-LICENSE.md`）。
 
 逐项归属见 **`THIRD-PARTY.md`**。
-
-## 录制素材 ⟨T10c 定稿⟩
-
-⟨待填：录屏分辨率/帧率/时长目标、分阶段录制清单、剪辑工程与归档说明⟩
