@@ -78,7 +78,9 @@ function VehicleModelInstance({ vehicleId }) {
   const state = useStudioStore();
   const setInitialSceneReady = useStudioStore((store) => store.setInitialSceneReady);
   const config = VEHICLES[vehicleId];
-  const source = useVehicleGLTF(config.url, vehicleId === "mustang" && !state.initialSceneReady);
+  // T1: 字节级传输追踪原硬绑定 mustang（基线默认车），单车型固化后改为对当前车生效。
+  // 注：本文件在 roadmap §12.2 中划归 T5 独占，此为一 token 例外改动，T5 重写本文件时请保留该行为。
+  const source = useVehicleGLTF(config.url, !state.initialSceneReady);
   const group = useRef();
   const headlightLevel = useRef(0);
   const tailLightLevel = useRef(0);

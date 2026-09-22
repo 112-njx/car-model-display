@@ -78,7 +78,39 @@
 - **影响面（已实测确认）**：**进度百分比条完全正常**（采样 00→06→12→24→54→73→…→100，`aria-valuenow` 同步推进，走 drei `useProgress`）；**仅丢失 MB 字节读数**。
 - **与 roadmap 的关系**：roadmap §2.2 第 2 条把「字节级进度条」列为"直接继承"的已实现能力，但该能力在源码中实际硬绑定在 mustang 上——属"roadmap 描述与 FormDrive 实际代码对不上"。
 - **候选修法**：`VehicleModel.jsx:81` 单点改为 `!state.initialSceneReady`（一个 token），即可让字节读数对唯一车型生效。代价：需改动 roadmap §12.2 划给 T5 的独占文件。
-- **状态**：**已上报人工，等待决策**（本轮不擅自改动 T5 独占文件）。
+- **状态**：**已上报人工 → 人工决策「本轮修」**，修复见记录 05。
+
+### 记录 05 · 2026-09-22 · 修复字节读数 + 发现 WebGPU 既有异常
+
+- **轮次目标**：按人工决策修复加载页字节 MB 读数；并追查自测中出现的控制台异常。
+- **改动文件**：`app/src/components/scene/VehicleModel.jsx`（1 行 + 2 行注释）。
+- **关键决策 / 问题**：
+
+  **A. 字节读数修复（按人工决策执行）**
+  - 修法：`vehicleId === "mustang" && !state.initialSceneReady` → `!state.initialSceneReady`。
+  - 越界说明：该文件在 roadmap §12.2 划归 T5 独占，此为经人工批准的例外改动；已在代码注释中标注，供 T5 重写本文件时保留该行为。
+  - 验证：加载页字节读数恢复且递增正常，3 次采样分别为 `18.0 / 21.6 MB`、`4.9 / 21.6 MB`、`1.4 / 21.6 MB`；进度百分比条同步正常（00→06→15→…）。
+
+  **B. 追查中发现的既有问题：WebGPU 路径大量未捕获异常（非 T1 引入）**
+  - **现象**：dev 下首屏加载期间出现大量 `Runtime.exceptionThrown`（Tesla 单车型实测 514 条）。
+  - **根因**：`TypeError: Invalid value used as weak map key`，栈为 three.js WebGPU 渲染器 `Textures.get` → `WeakMap.set` → `updateTexture` → `Bindings._init` → `Bindings.getForRender`，即纹理绑定阶段拿到无效纹理键。属 three.js WebGPU 后端在模型加载/材质克隆期间的内部问题。
+  - **归因实验（三步排除）**：
+    1. **A/B 关闭字节追踪**（还原为 `vehicleId === "mustang" && …`）→ 仍 514 条 ⇒ **与本次改动无关**。
+    2. **强制 WebGL**（CDP 注入使 `navigator.gpu` 为 undefined）→ 异常 **0 条**，且 10 部件、拖拽、灯光功能全正常 ⇒ **WebGPU 路径特有**。
+    3. **回退到未改动的原始基线**（`git checkout bbd23ef -- app/src app/public`，Mustang + WebGPU）→ **1046 条同样异常** ⇒ **FormDrive 原生既有问题**。
+  - **影响评估**：功能未受影响（三组实验下部件开合、拖拽旋转、灯光、视觉均正常，无可见异常），但属稳定性/性能隐患，且**默认走的就是 WebGPU 分支**（`StudioCanvas.jsx` 在 `navigator.gpu` 存在时优先用 `WebGPURenderer`）。
+  - **处置**：**不在 T1 范围内修复**（涉及 three.js 渲染后端与材质克隆时序，改动面大、风险高）。登记移交：roadmap §12.2 中 T8 负责「性能分级 / WebGL 回退」，建议 T8 评估「异常是否影响帧率」并考虑按 UA/能力降级到 WebGL；T9 可加一条断言「加载期异常数」纳入回归。
+- **自测结果**：
+  - `npm run build`：✅ 通过（12.86s）。
+  - 字节读数：✅ 恢复并递增，0 次负值。
+  - 功能回归：✅ 仅 Tesla、选择器 0、10/10 部件 resolved、全开/全关、鼠标拖拽 9.83 / 触摸 9.83、大灯 2.7 / 尾灯 3.2。
+  - 强制 WebGL 对照：✅ 0 异常。
+  - 原始基线对照：✅ 1046 异常（证明为继承问题）。
+- **commit**：（见本条之后的提交）
+- **遗留项**：
+  1. **WebGPU 路径 514 条未捕获异常**——既有问题，移交 T8（降级策略）与 T9（回归断言），详见上文 B。
+  2. **加载页进度偶发 `-1`**：约 5 次采样中出现 1 次。根因在 `InitialLoadingScreen.jsx` 的 `const elapsed = Math.min(64, time - previousTime)` **无下界钳制**——rAF 时间戳可早于 effect 中的 `performance.now()`，产生负 elapsed 并累加为负进度（`Math.round(-0.6) = -1`，且 `aria-valuenow="-1"` 违反 ARIA 取值范围）。**与 T1 改动无关**（`targetProgress` 有 `Math.max(0, …)` 钳制，不可能为负）。该文件在 §12.2 划归 T4，本轮不擅改；建议 T4 重写加载页时一并钳制（`Math.max(0, Math.min(64, …))`）。
+  3. `VehicleModel.jsx:81` 已按人工决策改动，T5 重写该文件时需保留此行为。
 
 ---
 
@@ -90,5 +122,5 @@
 | --- | --- | --- | --- |
 | 1 | Node 版本 | 本机 `node v24.13.1` / `npm 11.8.0`，项目 `.nvmrc` 与 `engines` 声明 `22.x`，本机无 nvm。已确认用 Node 24 继续（`npm install` 仅告警不阻断，Vite 7 要求 ≥22.12 已满足）。如需严格对齐声明，请装 nvm-windows + Node 22 后重跑 `npm install`。 | 已解决（按 Node 24 继续） |
 | 2 | 手机真机同局域网联调 | 开发机 WLAN 地址 `10.14.6.9`（SSID `henu 3`，网络类别 Public）。Public 防火墙配置文件**已关闭**且已存在 2 条 `Node.js JavaScript Runtime` 入站放行规则，**无需额外放行端口**。手机需连同一 Wi-Fi 后访问 `http://10.14.6.9:5173/`。若校园网开启 AP 客户端隔离，手机将无法访问，此时请改用手机热点。**AI 无法代做真机验收**，请人工确认"仅 Tesla 一台车 / 无车型切换入口 / 四门四窗前后备箱灯光可用 / 触摸拖拽旋转可用"。 | 待处理（需真机） |
-| 3 | 加载页字节 MB 读数 | 见记录 04，等待人工决策是否修 `VehicleModel.jsx:81`。 | 待处理 |
+| 3 | 加载页字节 MB 读数 | 见记录 04/05。人工已决策「本轮修」，`VehicleModel.jsx:81` 已改并验证通过。 | 已解决 |
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
