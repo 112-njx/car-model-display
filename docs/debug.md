@@ -156,6 +156,54 @@
 
 ---
 
+## Wave 1 · T9 自动化验证（脚本段 → Wave 2 验收执行段，同一 Agent 常驻）
+
+### 记录 T9-01 · 2026-09-22 · A 段：四个 verify 脚本 + 语音 mock + 共用 CDP 客户端 + 双端验收清单
+
+- **轮次目标**：A 段「契约无关阶段」——把四个 `verify-*.mjs`、语音 mock、双端验收清单按 §13.3 冻结接口全部写好，使其能对「符合契约的页面」跑断言；脚本只依赖钩子，不依赖任何功能实现。
+- **改动文件**：
+  | 文件 | 性质 |
+  | --- | --- |
+  | `scripts/verify-parts.mjs` | 新增 271 行 |
+  | `scripts/verify-pick.mjs` | 新增 280 行 |
+  | `scripts/verify-voice.mjs` | 新增 319 行 |
+  | `scripts/verify-camera.mjs` | 新增 268 行 |
+  | `scripts/lib/cdp.mjs` | 新增 618 行（共用 CDP 客户端 + 断言器 + 契约常量） |
+  | `scripts/mocks/speech-recognition-mock.js` | 新增 233 行 |
+  | `docs/qa-checklist.md` | 新增 218 行（双端人工验收清单 + `qa-report.md` 预留格式） |
+  | `app/scripts/verify-studio.mjs`、`app/scripts/verify-single-vehicle.mjs` | **删除**（另一次提交，见下） |
+- **关键决策 / 问题**：
+  1. **三个文件归属问题已人工裁定**：① 四个脚本 + mock 落**仓库根 `scripts/`**（与 `docs/` 同级；实测 `docs/` 在仓库根，而 §5 目录树把 `scripts/` 与 `src/` 并列，两者矛盾，故以人工裁定为准）；② `app/scripts/` 下两个 FormDrive 遗留脚本**删除**（T1 记录 02/03 已标「留待 T9」，其断言的三车型与 paint/wheel/studio 面板已随单车型裁剪全部消失）；③ 共用客户端新增 `scripts/lib/cdp.mjs`（§12.2 字面未列该路径，已申报获批）。
+  2. **基线定为 `origin/contract-v1`（`6bcb863`）而非 `origin/main`**：T2 已提前推送契约（比预期早），而 T1 随后又推了 `77dc507`（加载页字节读数修复），二者在 `0c41982` **分叉**。我的交付物（脚本/mock/清单）与 T1 那个 `VehicleModel` 修复零关系，若先基于 main 再 rebase/merge 到 contract-v1，只会在 `docs/debug.md` 上制造冲突并可能改写 T1 的提交。**修法**：`git reset --hard origin/contract-v1`，分支历史 = contract-v1 + 我的提交，零 merge commit、零他人提交改写。副作用：本 worktree 的工程**不含** T1 的字节读数修复——对脚本断言无影响（脚本读的是钩子，不是加载页文案）。
+  3. **端口陷阱（承接 T2 记录 06）**：本机 5173/5174 均被他人 Vite 实例占用。我的自测实例显式用 `npx vite --port 5181 --strictPort`，并以实例自身输出确认端口，避免打到别人的工程得到假绿。
+  4. **无头浏览器启动被 worktree 隔离守卫拦下（同 T2 的人工配置区 #5）**：现象——`"...msedge.exe" --headless=new --remote-debugging-port=9222 ...` 被拒，报「reaches ... outside the working directory」+「worktree-isolated session's git operations must target its own worktree」。根因——守卫无法判定该命令不是 git，故对工作目录外的可执行文件一律拒绝。**影响**——脚本本身写完了，但**四个脚本对真实浏览器的自测跑不了**（这是本段唯一未完成的验证）。**已登记的绕过路径**：人工用 `!` 前缀执行一次启动命令，或放行 `~/.config/safe-chains.toml`。见人工配置区 #7。
+  5. **CDP 连通性已先行验证**（守卫拦的是「启动」，不是「连接」）：在 9222 上曾有一个无头 Edge 实例，我用仓库外探针跑通 7 项——`/json/version`、`PUT /json/new`、WebSocket 连接、`Runtime.evaluate`、`Input.dispatchMouseEvent` + `dispatchTouchEvent`、`Page.captureScreenshot`、关闭标签页。该实例随后消失（属其他会话），故仍需人工起一个。
+  6. **断言分层设计（本段最重要的设计决定）**：四个脚本一律分「契约层」与「集成层」，用**集成信号**做门禁，未集成项标 `[SKIP]` 并写明原因，**不假绿也不误报**：
+     | 脚本 | 契约层（contract-v1 可跑绿） | 集成层门禁信号 | 未集成时 |
+     | --- | --- | --- | --- |
+     | verify-parts | store 驱动 → audit 终态 / progress 终值 / 分组 / closeAll / 未知 id 拒绝 | `parts[].bbox` 非 null 或过渡期采到 `0<progress<1` | 标 SKIP（progress 缺省为 `open?1:0` 属契约规定，非缺陷） |
+     | verify-pick | hitTargets 结构合法性（id 必须来自 §13.1、坐标须在视口内） | `hitTargets.length > 0` | 整体 SKIP |
+     | verify-voice | 注入点存在性、注入后 `supported=true`、传 null 复原 | `typeof __carDisplayVoiceInject === 'function'` | 整体 SKIP（T2 刻意未提供 stub，正是为了不假绿） |
+     | verify-camera | view 跟随 store、`orbitOnce` token 自增可重复、`autoRotate` 片一致 | `cameraAudit.position !== null` | 集成层 SKIP |
+  7. **`--strict` 语义**：默认 SKIP 不计失败（Wave 1 契约层用）；`--strict` 时 SKIP 计入失败（Wave 2 验收用，要求 SKIP=0）。
+  8. **发现一个契约缺口（需 T6/T8 受理）**：§13.3 只冻结了 `__carDisplayVoiceInject`，**没有冻结「开始识别」的驱动入口**。脚本能注入 mock，但若 T6 未在页面加载时自动创建 `SpeechRecognition`，脚本就无法让链路进入 listening（只能尝试点 `cd-voice-` 前缀的 UI 元素，属软依赖）。verify-voice 已实现「实例数为 0 → 明确 SKIP 并打印可操作原因」，同时**待登记 `docs/contracts/CHANGELOG.md`**（该文件属 T2 独占，按 §13.4 流程走）。
+  9. **mock 的可验证性**：mock 刻意实现成**浏览器无关的纯脚本**（只挂 `globalThis`，无 ESM 语法），因此其全部行为可在 Node 里直接跑断言——这是本段唯一能完整自测的部分（见下）。
+- **自测结果**：
+  - `node --check`：6 个新增脚本文件**语法全过**。
+  - **A 段自测脚本（仓库外 `%TEMP%\t9-a-segment-selftest.mjs`）：33 项断言全过，退出码 0**，覆盖：
+    - 语音 mock 23 项：全局挂载与幂等重复注入、`Ctor.name === 'SpeechRecognition'`、实例登记、`lang='zh-CN'`、未 start 时 `say()` 投递 0 实例、`start()` 派发 onstart、**重复 `start()` 抛 `InvalidStateError`**、`say()` 的 interim→final 顺序与 transcript、`onresult` 属性与 `addEventListener` **两路都到**、`deliveries` 计数、`interim:false` 只投 final、`fail('not-allowed')` 派发 error 后接 end 且退出 listening、`stop()`、`saySequence` 顺序回放、`reset()`。
+    - `scripts/lib/cdp.mjs` 10 项：契约常量与 §13.1 逐项一致（10 部件 / 2 灯光 / 4 视角 / 4 个阈值 / 分组合计 10）、`parseCli` 的 `--key=value` 与 `--flag` 与默认值与未知参数收集、`resolveDebugPort` 探测失败时的可操作报错、断言器 PASS/FAIL/SKIP 计数与退出码（含 `--strict` 语义）、`checkRun` 把抛错记 FAIL 不中断、`checkThrows`。
+  - **未完成**：四个 verify 脚本对真实浏览器的运行（被守卫拦截，见决策 4）。已实测的错误路径表现正确——无可用调试端口时打印中文可操作指引并退出码 1，不静默失败。
+  - `npm run build` 未受影响（本段未触碰 `app/src/**`、`package.json`；worktree 内 `npm install` 后 `git status` 干净，lockfile 未被弄脏）。
+- **commit**：`0629fbc`（A 段交付物）；`d67b65e`（删除两个失效旧脚本）
+- **遗留项**：
+  1. **四个脚本的浏览器端自测未跑**——阻塞于人工配置区 #7；放行后立即补跑并回报（这是 Wave 1 出口「verify-parts/verify-voice 契约层断言可跑绿」的最后一环）。
+  2. **`docs/contracts/CHANGELOG.md` 待追加一行**：语音链路缺「开始识别」的冻结驱动入口（决策 8）。该文件属 T2 独占，按 §13.4 流程登记。
+  3. Wave 2 的验收执行段（随 T8 每次合并滚动跑脚本 + 双端验收 + 产出 `qa-report.md` + 回归）由本 Agent 继续承担，清单与格式已在 `docs/qa-checklist.md` 就位。
+  4. 手机真机语音项有**硬性前提**：Web Speech API 要求安全上下文，局域网 `http://<IP>` 下手机 Chrome 拒绝麦克风，须等 T10b 的 https URL；已在 `qa-checklist.md` §3.2 B11 标为「阻塞前提」，验收时不得标「通过」。
+
+---
+
 ## 需要项目人工配置的地方
 
 > 仅登记 AI 无法自行完成、必须由项目负责人处理的事项。
@@ -168,3 +216,4 @@
 | 4 | Tesla 模型 CC BY 4.0 署名 | `app/public/models/TESLA-LICENSE.md` 已完整保留（Ameer Studio / Sketchfab / CC BY 4.0）。是否需在最终页面 UI 上展示署名文案，属 roadmap T10「第三方许可归属」范围，本轮未涉及。 | 待处理（T10 范围） |
 | 5 | 无头浏览器 CDP 自测放行 | T2 需要用本机 Edge（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）以 `--headless=new --remote-debugging-port=9333` 打开 `http://127.0.0.1:5174/` 做渲染层实测（部件动画 / 灯光发光 / 相机位移）。该命令被本会话的 worktree 隔离守卫拦下（它无法判定命令名不是 git）。**AI 无法自行放行**。请二选一：① 在 `~/.config/safe-chains.toml` 放行该路径/命令；② 自己执行一次（把下面命令里的路径原样粘贴到会话里，前缀 `!`）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9333 --user-data-dir=C:\Users\112\AppData\Local\Temp\t2-edge-profile --no-first-run --window-size=1440,900 http://127.0.0.1:5174/`（需先在 worktree 的 `app/` 里跑着 `npm run dev`，端口以实际输出为准）。 | 待处理（阻塞 T2 渲染层实测） |
 | 6 | 5173 端口被他人 Vite 实例占用 | 本机 5173 已被另一个 Vite 进程（PID 24428）监听，T2 的 dev server 自动落到 **5174**。做 dev 自测时务必以自己实例输出的端口为准，否则会打到别人的工程得到假绿（详见记录 06 的端口陷阱）。若后续多 Agent 并行开发，建议各自显式指定端口。 | 待处理（已规避，登记备查） |
+| 7 | **无头浏览器启动放行（T9 同样受阻，且阻塞面更大）** | 与 #5 同一堵墙：worktree 隔离守卫拒绝执行工作目录外的 `msedge.exe`。**T9 的四个 verify 脚本全部靠 CDP 驱动真实浏览器，无浏览器则一个都跑不了**（Wave 1 出口「契约层断言跑绿」与 Wave 2 全部验收都卡在这里）。请二选一：① 放行 `~/.config/safe-chains.toml` 里的 msedge.exe 路径；② 自己起一次（在会话里用 `!` 前缀粘贴，dev server 端口按实际输出改）：`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --remote-debugging-port=9222 --user-data-dir=C:\Users\112\AppData\Local\Temp\car-display-edge --no-first-run --no-default-browser-check --window-size=1440,900 about:blank`（脚本会依次探测 9222/9333/12319，无需另配）。 | **待处理（阻塞 T9 脚本自测与 Wave 2 全部验收）** |
